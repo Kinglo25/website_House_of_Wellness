@@ -1,0 +1,19 @@
+{
+  "name": "streamhouse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Stremio-style media center with a built-in qBittorrent-style download manager.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "webtorrent": "^3.0.21"
+  }
+}
