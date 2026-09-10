@@ -314,15 +314,15 @@ router.post('/network/expose', wrap(async (req, res) => {
 /* ---------------------------------------------------------------- casting */
 
 router.get('/cast/devices', wrap(async (req, res) => {
-  res.json(await cast.listDevices({ refresh: req.query.refresh === '1' }))
+  res.json(await cast.listAllDevices({ refresh: req.query.refresh === '1' }))
 }))
 
 router.post('/cast/devices', wrap(async (req, res) => {
-  res.status(201).json(await cast.addManual(req.body?.location))
+  res.status(201).json(await cast.addManualAnywhere(req.body?.location))
 }))
 
 router.delete('/cast/devices/:id', (req, res) => {
-  res.json({ removed: cast.forgetDevice(req.params.id) })
+  res.json({ removed: cast.forgetAnyDevice(req.params.id) })
 })
 
 // Hand a TV the URL of something in the library, or any direct URL.
@@ -352,16 +352,16 @@ router.post('/cast/play', wrap(async (req, res) => {
   }
 
   if (!target) return res.status(400).json({ error: 'Nothing to cast' })
-  res.json(await cast.play(deviceId, { url: target, title: name, mime, subtitleUrl }))
+  res.json(await cast.playAnywhere(deviceId, { url: target, title: name, mime, subtitleUrl }))
 }))
 
 router.post('/cast/:id/control', wrap(async (req, res) => {
-  await cast.control(req.params.id, req.body?.action, req.body?.value)
+  await cast.controlAnywhere(req.params.id, req.body?.action, req.body?.value)
   res.json({ ok: true })
 }))
 
 router.get('/cast/:id/status', wrap(async (req, res) => {
-  res.json(await cast.status(req.params.id))
+  res.json(await cast.statusAnywhere(req.params.id))
 }))
 
 /* ------------------------------------------------------------ maintenance */

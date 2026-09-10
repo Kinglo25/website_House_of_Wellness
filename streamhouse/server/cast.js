@@ -1,5 +1,6 @@
 import dgram from 'dgram'
 import { URL } from 'url'
+import * as gcast from './googlecast.js'
 
 // Casting over DLNA / UPnP AVTransport — the protocol virtually every smart TV
 // (Samsung, LG, Sony, Philips) and every media box speaks out of the box.
@@ -132,7 +133,104 @@ export function discover ({ timeout = 3000 } = {}) {
 
 export async function listDevices ({ refresh = false } = {}) {
   if (refresh || !devices.size || Date.now() - lastScan > 60000) await discover({})
-  return [...devices.values()]
+  return [...devices.values()].map(device => ({ ...device, protocol: 'dlna' }))
+}
+
+/* ------------------------------------------------- every kind of TV at once */
+
+// Android TV and Chromecast speak Google Cast, not DLNA, so both networks are
+// searched and the results shown in one list.
+const castDevices = new Map()
+let lastCastScan = 0
+
+export async function listAllDevices ({ refresh = false } = {}) {
+  const needsCastScan = refresh || !castDevices.size || Date.now() - lastCastScan > 60000
+  const [dlna, cast] = await Promise.all([
+    listDevices({ refresh }),
+    needsCastScan
+      ? gcast.discoverCastDevices().then(found => {
+        lastCastScan = Date.now()
+        for (const device of found) castDevices.set(device.id, device)
+        return [...castDevices.values()]
+      }).catch(err => {
+        console.warn('[cast] Google Cast scan failed:', err.message)
+        return [...castDevices.values()]
+      })
+      : Promise.resolve([...castDevices.values()])
+  ])
+  // Cast devices first: on an Android TV that is the one that will work.
+  return [...cast, ...dlna]
+}
+
+function findAny (id) {
+  return castDevices.get(id) || devices.get(id) || null
+}
+
+export async function playAnywhere (deviceId, media) {
+  const device = findAny(deviceId)
+  if (!device) throw new Error('That device is no longer on the network — scan again')
+  if (device.protocol === 'cast') {
+    await gcast.sessionFor(device).load(media)
+    device.nowPlaying = { url: media.url, title: media.title, startedAt: Date.now() }
+    return { device: device.name, title: media.title, protocol: 'cast' }
+  }
+  return { ...(await play(deviceId, media)), protocol: 'dlna' }
+}
+
+export async function controlAnywhere (deviceId, action, value = null) {
+  const device = findAny(deviceId)
+  if (!device) throw new Error('That device is no longer on the network — scan again')
+  if (device.protocol !== 'cast') return control(deviceId, action, value)
+
+  const session = gcast.sessionFor(device)
+  switch (action) {
+    case 'pause': return session.media('PAUSE')
+    case 'resume': return session.media('PLAY')
+    case 'stop': return session.stop()
+    case 'seek': return session.media('SEEK', { currentTime: Number(value) || 0 })
+    case 'volume': return session.setVolume((Number(value) || 0) / 100)
+    default: throw new Error(`Unknown cast action: ${action}`)
+  }
+}
+
+export async function statusAnywhere (deviceId) {
+  const device = findAny(deviceId)
+  if (!device) throw new Error('That device is no longer on the network — scan again')
+  if (device.protocol !== 'cast') return status(deviceId)
+  const state = await gcast.sessionFor(device).status()
+  return { device: device.name, ...state }
+}
+
+export async function addManualAnywhere (location) {
+  const text = String(location || '').trim()
+  // A bare IP or host:port is treated as a Google Cast device — that is what an
+  // Android TV is, and it has no description URL to point at.
+  if (/^[\w.-]+(:\d+)?$/.test(text) && !text.startsWith('http')) {
+    const [address, port] = text.split(':')
+    const device = {
+      id: `cast:${address}`,
+      protocol: 'cast',
+      name: `Cast device at ${address}`,
+      manufacturer: 'Google Cast',
+      model: 'added by address',
+      address,
+      port: Number(port) || 8009
+    }
+    // Prove it answers before adding it to the list.
+    const session = gcast.sessionFor(device)
+    await session.connect()
+    castDevices.set(device.id, device)
+    return device
+  }
+  return addManual(text)
+}
+
+export function forgetAnyDevice (id) {
+  if (castDevices.has(id)) {
+    gcast.closeSession(id)
+    return castDevices.delete(id)
+  }
+  return forgetDevice(id)
 }
 
 // Some TVs answer SSDP unreliably, or sit on a different subnet. Pointing
