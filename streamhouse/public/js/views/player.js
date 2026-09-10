@@ -53,6 +53,16 @@ export default async function player ({ params, query, container }) {
 
   /* -------------------------------------------------------------- source */
 
+  // Present only when running inside the StreamHouse Android TV app.
+  const nativeTv = (() => {
+    try {
+      return window.StreamHouseTV?.isNativeTv?.() ? window.StreamHouseTV : null
+    } catch {
+      return null
+    }
+  })()
+
+  let handedToNative = false
   let src = ''
   try {
     if (kind === 'torrent') {
@@ -70,13 +80,35 @@ export default async function player ({ params, query, container }) {
       root.querySelector('#pl-sub').textContent = 'Direct stream'
     }
     if (!src) throw new Error('Nothing to play')
-    video.src = src
+
+    // Inside the Android TV app, playback belongs to the native player:
+    // ExoPlayer handles the MKV, H.265 and AC3 files a WebView will not touch.
+    if (nativeTv) {
+      const key = meta.videoId || meta.imdbId || state.id || src
+      let start = Number(query.t) || 0
+      if (!start) {
+        try {
+          start = (await api.progress())[key]?.time || 0
+        } catch { /* no saved position */ }
+      }
+      nativeTv.play(new URL(src, location.origin).toString(), meta.title || 'StreamHouse', start, String(key))
+      handedToNative = true
+    } else {
+      video.src = src
+    }
   } catch (err) {
     busy.innerHTML = `<div style="max-width:520px;text-align:center">
       <h2>Could not start playback</h2>
       <p class="muted">${esc(err.message)}</p>
       <button class="btn primary" onclick="history.back()">Go back</button></div>`
     return { destroy: () => root.remove() }
+  }
+
+  // The native player took over: close this screen and go back to browsing.
+  if (handedToNative) {
+    root.remove()
+    setTimeout(() => history.back(), 60)
+    return { destroy () { root.remove() } }
   }
 
   /* ------------------------------------------------------------ playback */

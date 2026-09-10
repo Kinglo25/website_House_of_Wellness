@@ -6,6 +6,7 @@ import { engine } from './torrent.js'
 import { addons } from './addons.js'
 import api from './routes/api.js'
 import { localAddresses, isLanReachable } from './network.js'
+import { startDiscovery, stopDiscovery } from './discovery.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const publicDir = path.join(here, '..', 'public')
@@ -103,6 +104,7 @@ app.locals.rebind = async (host, port) => {
 await start(settings.host, settings.port)
 engine.start()
 addons.refreshManifests()
+startDiscovery()
 
 // A malformed torrent or a dropped peer connection must never take the whole
 // app down while downloads are in flight.
@@ -119,6 +121,7 @@ async function shutdown () {
   shuttingDown = true
   console.log('\nStopping StreamHouse…')
   server?.close()
+  stopDiscovery()
   await engine.destroy()
   process.exit(0)
 }

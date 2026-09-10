@@ -31,7 +31,7 @@ export async function castPicker ({ torrentId, fileIdx = null, title = '', subti
   })
   backdrop.querySelector('[data-act="rescan"]').addEventListener('click', () => load(true))
   backdrop.querySelector('[data-act="manual"]').addEventListener('click', async () => {
-    const location = prompt('Device description URL\n\nMost TVs expose one like http://192.168.1.20:8080/description.xml — check the TV\'s network or DLNA settings.')
+    const location = prompt('Address of the device.\n\nAndroid TV, Google TV or Chromecast: just its IP, e.g. 192.168.1.30\nDLNA TV: its description URL, e.g. http://192.168.1.20:8080/description.xml')
     if (!location) return
     try {
       const device = await api.castAddDevice(location)
@@ -68,7 +68,9 @@ export async function castPicker ({ torrentId, fileIdx = null, title = '', subti
       body.append(h(`
         <div>
           <p>No TV answered.</p>
-          <p class="muted tiny">Check that the TV is on and on the same network, and that its DLNA
+          <p class="muted tiny">An <b>Android TV</b>, Google TV box or Chromecast is found
+            over Google Cast — make sure it is awake and on this network. Other TVs need their
+            DLNA feature switched on: Samsung calls it <b>AllShare</b>, LG <b>SmartShare</b>,
           feature is enabled — Samsung calls it <b>AllShare</b>, LG <b>SmartShare</b>, Sony
           <b>Screen&nbsp;mirroring / Home&nbsp;network</b>. Then hit Scan again.</p>
           <p class="muted tiny">If your TV never appears, use <b>Add by address</b>, or just open the
@@ -78,13 +80,15 @@ export async function castPicker ({ torrentId, fileIdx = null, title = '', subti
     }
 
     devices.forEach(device => {
+      const isCast = device.protocol === 'cast'
       const node = h(`
         <button class="device">
-          <span class="screen">📺</span>
+          <span class="screen">${isCast ? '📡' : '📺'}</span>
           <span style="flex:1;min-width:0">
             <b>${esc(device.name)}</b>
             <span class="sub">${esc([device.manufacturer, device.model].filter(Boolean).join(' · ') || 'DLNA renderer')}</span>
           </span>
+          <span class="chip static tiny">${isCast ? 'Google Cast' : 'DLNA'}</span>
           <span class="btn small primary">Play</span>
         </button>`)
       node.addEventListener('click', () => start(device))

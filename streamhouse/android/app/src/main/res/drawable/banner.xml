@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The 320x180 tile Android TV shows on the home row. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path
+        android:fillColor="#14142B"
+        android:pathData="M0,0h320v180h-320z" />
+    <path
+        android:fillColor="#7B5BF5"
+        android:pathData="M92,52h56a24,24 0 0 1 24,24v28a24,24 0 0 1 -24,24h-56a24,24 0 0 1 -24,-24v-28a24,24 0 0 1 24,-24z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M112,72l30,18l-30,18z" />
+    <path
+        android:fillColor="#C2B0FF"
+        android:pathData="M196,74h56v10h-56z M196,94h40v8h-40z" />
+</vector>

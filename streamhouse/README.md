@@ -102,7 +102,21 @@ use. The startup banner prints it too:
   On your network    http://192.168.1.34:11471   ← open this on your TV
 ```
 
-### 1. The TV's own web browser (Samsung, LG, and most Android TVs)
+### 0. Android TV: install the app
+
+Android TV, Google TV and Fire TV have no usable web browser, so they get a real
+app instead — sideloaded from an APK exactly like SmartTube:
+
+1. Download `streamhouse-tv.apk` from the repository's **`tv-latest`** release
+   (GitHub Actions rebuilds it on every change to `streamhouse/android/`).
+2. Install it on the TV with the *Downloader* app, or `adb install`.
+3. Open it, and press OK on your computer in the list it finds.
+
+It plays video through ExoPlayer rather than a WebView, so the MKV / H.265 / AC3
+files torrents actually contain play properly. See
+[`android/README.md`](android/README.md) for the details.
+
+### 1. The TV's own web browser (Samsung, LG and other smart TVs)
 
 Type that address into the TV browser. StreamHouse notices it is a TV and switches to
 **ten-foot mode**: larger type, bigger posters, and a highlight you can see from the sofa.
@@ -119,17 +133,19 @@ In the player, left/right seek; volume stays with the TV's own volume keys, wher
 belongs. You can force the mode either way in **Settings → Ten-foot mode**, or with
 `?tv=1` / `?tv=0` on the URL.
 
-### 2. Cast to the TV over DLNA
+### 2. Cast to the TV
 
 Hit **📺 TV** on any stream, any download, or in the player. StreamHouse scans the
-network, you pick your TV, and it starts playing there — pulling the video from this
+network over both **Google Cast** (Android TV, Google TV, Chromecast) and **DLNA**
+(Samsung, LG, Sony and most other smart TVs), you pick your TV, and it starts playing there — pulling the video from this
 server directly, so it works while the file is still downloading. The page you pressed it
 from becomes the remote: pause, resume, skip back, stop, with the position read back from
 the TV.
 
-Turn the TV's DLNA feature on first — Samsung calls it **AllShare**, LG **SmartShare**,
-Sony **Home network**. If the TV never shows up in the scan, use **Add by address** with
-its device description URL, which always works.
+An Android TV or Chromecast just needs to be awake on the same network. Other TVs need
+their DLNA feature switched on first — Samsung calls it **AllShare**, LG **SmartShare**,
+Sony **Home network**. If a TV never shows up in the scan, use **Add by address**: a bare
+IP like `192.168.1.30` for a Cast device, or the device description URL for a DLNA one.
 
 ### 3. Anything else
 
@@ -173,10 +189,13 @@ streamhouse/
 │   ├── torrent.js      the BitTorrent engine: add, select, pause, stats, cleanup
 │   ├── store.js        small atomic JSON store
 │   ├── cast.js         DLNA/UPnP: SSDP discovery + AVTransport control
+│   ├── googlecast.js   Google Cast: mDNS + castv2 (what Android TV speaks)
+│   ├── discovery.js    answers the TV app's "where are you?" broadcast
 │   ├── network.js      LAN addresses, and whether a TV can actually reach us
 │   ├── mime.js         content types, SRT → WebVTT
 │   ├── paths.js        where state and media live
 │   └── routes/api.js   the REST API + byte-range stream server
+├── android/            the Android TV app (see android/README.md)
 └── public/
     ├── index.html      app shell
     ├── css/style.css   theme
