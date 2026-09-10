@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StreamHouse</string>
+
+    <string name="setup_title">Connect to StreamHouse</string>
+    <string name="setup_hint">Start StreamHouse on your computer and turn on “Allow other devices” in its Settings. This TV will find it automatically.</string>
+    <string name="searching">Looking for StreamHouse on your network…</string>
+    <string name="none_found">Nothing found. Type the address shown in StreamHouse Settings.</string>
+    <string name="address_hint">192.168.1.34 or 192.168.1.34:11471</string>
+    <string name="connect">Connect</string>
+    <string name="scan_again">Scan again</string>
+    <string name="enter_address">Enter an address first</string>
+
+    <string name="retry">Try again</string>
+    <string name="change_server">Change server</string>
+    <string name="cannot_reach">Could not reach %1$s.\n\nCheck the computer is awake and that “Allow other devices” is on in StreamHouse Settings.</string>
+
+    <string name="nothing_to_play">Nothing to play</string>
+    <string name="playback_failed">This file would not play (%1$s)</string>
+
+    <string name="exit_title">Leave StreamHouse?</string>
+    <string name="exit_yes">Exit</string>
+    <string name="exit_no">Stay</string>
+
+    <plurals name="found">
+        <item quantity="one">Found %d computer — press OK to connect</item>
+        <item quantity="other">Found %d computers — press OK to connect</item>
+    </plurals>
+</resources>

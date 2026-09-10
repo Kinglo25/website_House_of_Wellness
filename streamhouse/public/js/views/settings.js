@@ -1,0 +1,243 @@
+import { api } from '../api.js'
+import { h, esc, toast, bytes } from '../util.js'
+import { setTvMode } from '../tv.js'
+import { castPicker } from '../cast.js'
+
+// Everything the engine and the UI read at runtime, editable in one place.
+export default async function settings ({ container }) {
+  container.innerHTML = '<div class="pad" id="settings"></div>'
+  const root = container.querySelector('#settings')
+  root.append(h('<h1>Settings</h1>'))
+
+  const [config, disk, network] = await Promise.all([
+    api.getConfig(),
+    api.disk().catch(() => null),
+    api.network().catch(() => null)
+  ])
+  const grid = h('<div class="settings-grid"></div>')
+  root.append(grid)
+
+  const save = async patch => {
+    try {
+      await api.saveConfig(patch)
+      toast('Saved', 'ok')
+    } catch (err) {
+      toast(err.message, 'err')
+    }
+  }
+
+  const textSetting = ({ key, title, hint, value, placeholder = '' }) => {
+    const node = h(`
+      <div class="setting">
+        <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
+        <div class="control"><input class="field" value="${esc(value)}" placeholder="${esc(placeholder)}"></div>
+      </div>`)
+    const input = node.querySelector('input')
+    input.addEventListener('change', () => save({ [key]: input.value }))
+    return node
+  }
+
+  const numberSetting = ({ key, title, hint, value, min = 0, step = 1, transform = v => v, display = v => v }) => {
+    const node = h(`
+      <div class="setting">
+        <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
+        <div class="control"><input class="field" type="number" min="${min}" step="${step}" value="${esc(display(value))}"></div>
+      </div>`)
+    const input = node.querySelector('input')
+    input.addEventListener('change', () => save({ [key]: transform(Number(input.value)) }))
+    return node
+  }
+
+  const toggleSetting = ({ key, title, hint, value }) => {
+    const node = h(`
+      <div class="setting">
+        <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
+        <div class="switch ${value ? 'on' : ''}"><i></i></div>
+      </div>`)
+    const toggle = node.querySelector('.switch')
+    toggle.addEventListener('click', () => {
+      const next = !toggle.classList.contains('on')
+      toggle.classList.toggle('on', next)
+      save({ [key]: next })
+    })
+    return node
+  }
+
+  /* ------------------------------------------------------------ TV */
+
+  grid.append(h('<h2 style="margin-top:8px">TV</h2>'))
+
+  const tvPanel = h(`
+    <div class="setting" style="align-items:flex-start">
+      <div class="label">
+        <b>Allow other devices</b>
+        <span class="tiny muted">Let your TV, phone or tablet reach StreamHouse over your home
+        network. Off means this computer only — which is why a TV cannot find it.</span>
+        <div id="tv-address" style="margin-top:12px"></div>
+      </div>
+      <div class="switch ${network?.reachable ? 'on' : ''}" id="tv-expose"><i></i></div>
+    </div>`)
+  grid.append(tvPanel)
+
+  function drawAddress (info) {
+    const box = tvPanel.querySelector('#tv-address')
+    box.innerHTML = ''
+    if (!info?.reachable) {
+      box.append(h('<div class="tiny muted">Turn this on, then type the address that appears here into your TV\'s web browser.</div>'))
+      return
+    }
+    if (!info.urls?.length) {
+      box.append(h('<div class="tiny" style="color:#ff9ba4">No network address found — is this machine connected to your network?</div>'))
+      return
+    }
+    box.append(h(`
+      <div>
+        <div class="tiny muted" style="margin-bottom:6px">Open this on your TV:</div>
+        ${info.urls.map(url => `<div class="mono" style="font-size:22px;font-weight:700;color:#c2b0ff">${esc(url)}</div>`).join('')}
+        <div class="tiny muted" style="margin-top:8px">No password — anyone on your network can open it.</div>
+      </div>`))
+  }
+  drawAddress(network)
+
+  tvPanel.querySelector('#tv-expose').addEventListener('click', async event => {
+    const toggle = event.currentTarget
+    const next = !toggle.classList.contains('on')
+    toggle.classList.toggle('on', next)
+    try {
+      const result = await api.exposeNetwork(next)
+      toast(result.note, 'ok')
+      // The server rebinds a moment later; read the new state back after that.
+      setTimeout(async () => {
+        const fresh = await api.network().catch(() => null)
+        drawAddress(fresh)
+      }, 900)
+    } catch (err) {
+      toggle.classList.toggle('on', !next)
+      toast(err.message, 'err')
+    }
+  })
+
+  const tvModePanel = h(`
+    <div class="setting">
+      <div class="label">
+        <b>Ten-foot mode</b>
+        <span class="tiny muted">Bigger text and remote-control navigation — arrow keys move the
+        highlight, OK selects, Back goes back. Detected automatically on smart TVs.</span>
+      </div>
+      <div class="switch ${document.documentElement.classList.contains('tv') ? 'on' : ''}"><i></i></div>
+    </div>`)
+  tvModePanel.querySelector('.switch').addEventListener('click', event => {
+    const toggle = event.currentTarget
+    const next = !toggle.classList.contains('on')
+    toggle.classList.toggle('on', next)
+    setTvMode(next)
+    toast(next ? 'Ten-foot mode on — use the arrow keys' : 'Ten-foot mode off', 'ok')
+  })
+  grid.append(tvModePanel)
+
+  const castPanel = h(`
+    <div class="setting">
+      <div class="label">
+        <b>Cast to a TV</b>
+        <span class="tiny muted">Send video to a DLNA device on your network and use this page as
+        the remote. Enable AllShare (Samsung), SmartShare (LG) or Home network (Sony) on the TV first.</span>
+      </div>
+      <div class="control"><button class="btn" id="cast-scan">Find devices</button></div>
+    </div>`)
+  castPanel.querySelector('#cast-scan').addEventListener('click', () => castPicker({ title: 'StreamHouse' }))
+  grid.append(castPanel)
+
+  grid.append(h('<h2 style="margin-top:22px">Downloads</h2>'))
+  grid.append(textSetting({
+    key: 'downloadDir',
+    title: 'Download folder',
+    hint: disk ? `${disk.writable ? 'writable' : 'NOT writable — pick another folder'}` : 'where finished media is kept',
+    value: config.downloadDir
+  }))
+  grid.append(numberSetting({
+    key: 'downloadLimit',
+    title: 'Download limit',
+    hint: 'KB/s — 0 means unlimited',
+    value: config.downloadLimit,
+    display: value => (value > 0 ? Math.round(value / 1024) : 0),
+    transform: value => (value > 0 ? value * 1024 : -1)
+  }))
+  grid.append(numberSetting({
+    key: 'uploadLimit',
+    title: 'Upload limit',
+    hint: 'KB/s — 0 means unlimited',
+    value: config.uploadLimit,
+    display: value => (value > 0 ? Math.round(value / 1024) : 0),
+    transform: value => (value > 0 ? value * 1024 : -1)
+  }))
+  grid.append(numberSetting({
+    key: 'maxConns',
+    title: 'Peer connections',
+    hint: 'maximum peers per torrent',
+    value: config.maxConns,
+    min: 4
+  }))
+  grid.append(toggleSetting({
+    key: 'seedAfterDownload',
+    title: 'Keep seeding when finished',
+    hint: 'share completed files back to the swarm',
+    value: config.seedAfterDownload
+  }))
+  grid.append(numberSetting({
+    key: 'seedRatioLimit',
+    title: 'Stop seeding at ratio',
+    hint: '0 means never stop automatically',
+    value: config.seedRatioLimit,
+    step: 0.1
+  }))
+  grid.append(toggleSetting({
+    key: 'streamCacheOnly',
+    title: 'Discard streamed files',
+    hint: 'delete play-only torrents 30 minutes after you stop watching',
+    value: config.streamCacheOnly
+  }))
+
+  grid.append(h('<h2 style="margin-top:22px">Network</h2>'))
+  grid.append(numberSetting({
+    key: 'torrentPort',
+    title: 'BitTorrent port',
+    hint: '0 lets the OS choose a free port',
+    value: config.torrentPort
+  }))
+  grid.append(numberSetting({
+    key: 'port',
+    title: 'Web interface port',
+    hint: 'takes effect after a restart',
+    value: config.port,
+    min: 1
+  }))
+  grid.append(textSetting({
+    key: 'host',
+    title: 'Bind address',
+    hint: 'set by the TV switch above — 127.0.0.1 is this computer only, 0.0.0.0 is your whole network',
+    value: config.host
+  }))
+
+  grid.append(h('<h2 style="margin-top:22px">Maintenance</h2>'))
+  const maintenance = h(`
+    <div class="setting">
+      <div class="label"><b>Add-on response cache</b><span class="tiny muted">catalogues and streams are cached for five minutes</span></div>
+      <div class="control"><button class="btn" id="clear-cache">Clear cache</button></div>
+    </div>`)
+  maintenance.querySelector('#clear-cache').addEventListener('click', async () => {
+    await api.clearCache()
+    toast('Cache cleared', 'ok')
+  })
+  grid.append(maintenance)
+
+  const about = h(`
+    <div class="setting">
+      <div class="label">
+        <b>About</b>
+        <span class="tiny muted">StreamHouse — a Stremio-style front end with its own BitTorrent engine.
+        You are responsible for the add-ons you install and the material you download.</span>
+      </div>
+      <div class="control tiny muted mono">data: ~/.streamhouse<br>media: ${esc(config.downloadDir)}</div>
+    </div>`)
+  grid.append(about)
+}
