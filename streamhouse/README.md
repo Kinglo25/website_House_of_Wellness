@@ -89,6 +89,64 @@ The Downloads page gives you what a torrent client gives you:
 Downloads survive a restart: the app keeps each torrent's metadata, re-checks the data
 already on disk and picks up where it left off — even with no peers around.
 
+## Watching on your TV
+
+Three ways, depending on what your TV can do. All of them need the app reachable
+from your network first: **Settings → TV → Allow other devices**, which flips the
+server from this-computer-only to your whole home network and shows the address to
+use. The startup banner prints it too:
+
+```
+  StreamHouse is running
+  On this computer   http://127.0.0.1:11471
+  On your network    http://192.168.1.34:11471   ← open this on your TV
+```
+
+### 1. The TV's own web browser (Samsung, LG, and most Android TVs)
+
+Type that address into the TV browser. StreamHouse notices it is a TV and switches to
+**ten-foot mode**: larger type, bigger posters, and a highlight you can see from the sofa.
+The remote drives it:
+
+| Remote | Does |
+|---|---|
+| D-pad arrows | move the highlight (it works out which tile is in that direction) |
+| OK / Enter | open the highlighted thing |
+| Back / Return | previous screen — including Samsung's and LG's own back keycodes |
+| ◀◀ ▶ ❚❚ ▶▶ | rewind, play, pause, forward, while watching |
+
+In the player, left/right seek; volume stays with the TV's own volume keys, where it
+belongs. You can force the mode either way in **Settings → Ten-foot mode**, or with
+`?tv=1` / `?tv=0` on the URL.
+
+### 2. Cast to the TV over DLNA
+
+Hit **📺 TV** on any stream, any download, or in the player. StreamHouse scans the
+network, you pick your TV, and it starts playing there — pulling the video from this
+server directly, so it works while the file is still downloading. The page you pressed it
+from becomes the remote: pause, resume, skip back, stop, with the position read back from
+the TV.
+
+Turn the TV's DLNA feature on first — Samsung calls it **AllShare**, LG **SmartShare**,
+Sony **Home network**. If the TV never shows up in the scan, use **Add by address** with
+its device description URL, which always works.
+
+### 3. Anything else
+
+Copy the stream URL (**Open elsewhere** in the player, or ⋯ on a stream row) and paste it
+into whatever the TV runs — VLC on an Android TV, Kodi, an Apple TV app, a games console:
+
+```
+http://192.168.1.34:11471/api/stream/<info-hash>/<file-index>
+```
+
+### If the TV cannot play it
+
+TVs are usually *better* at this than browsers — most handle MKV and H.265 natively — so a
+file that fails in a browser tab often plays fine cast or opened on the TV itself. If a
+particular file still refuses, it is the TV's decoder, not the download: the file on disk
+is fine and plays anywhere else.
+
 ## Playing
 
 The player streams over HTTP byte ranges from the local engine, so seeking works while
@@ -114,6 +172,8 @@ streamhouse/
 │   ├── addons.js       Stremio add-on protocol client (catalog/meta/stream/subtitles)
 │   ├── torrent.js      the BitTorrent engine: add, select, pause, stats, cleanup
 │   ├── store.js        small atomic JSON store
+│   ├── cast.js         DLNA/UPnP: SSDP discovery + AVTransport control
+│   ├── network.js      LAN addresses, and whether a TV can actually reach us
 │   ├── mime.js         content types, SRT → WebVTT
 │   ├── paths.js        where state and media live
 │   └── routes/api.js   the REST API + byte-range stream server
@@ -124,6 +184,8 @@ streamhouse/
         ├── app.js      routes, search box, global transfer counters
         ├── router.js   hash router
         ├── api.js      typed wrapper over the REST API
+        ├── tv.js        ten-foot mode: D-pad navigation, remote keys
+        ├── cast.js      device picker and the on-screen remote
         ├── components.js, util.js
         └── views/      board, discover, search, detail, library,
                         downloads, addons, settings, player
@@ -149,14 +211,24 @@ Useful if you want to drive it from a script or another app:
 | GET | `/api/playback/:id` | what the player needs before it starts |
 | GET | `/api/catalogs`, `/api/catalog`, `/api/meta/:type/:id`, `/api/streams/:type/:id` | add-on data |
 | GET/POST | `/api/config` | settings |
+| GET | `/api/network` | LAN addresses and whether other devices can reach it |
+| POST | `/api/network/expose` | `{enabled}` — switch between local-only and network |
+| GET/POST | `/api/cast/devices` | list/scan renderers, or add one by address |
+| POST | `/api/cast/play` | `{deviceId, torrentId, fileIdx, title}` |
+| POST | `/api/cast/:id/control` | `{action: pause｜resume｜stop｜seek｜volume, value}` |
+| GET | `/api/cast/:id/status` | transport state and position, read from the TV |
 
 ## Notes
 
 - `webtorrent` must stay on **v3**. In v2 the pinned `parse-torrent` returns the
   info-hash as a string while `uint8-util` expects a typed array, and every torrent
   you add throws on the spot.
-- `HOST=0.0.0.0` exposes the UI and the stream server to your whole network. There is no
-  authentication, so only do that on a network you trust.
+- Allowing other devices (`HOST=0.0.0.0`) exposes the UI and the stream server to your
+  whole network with no authentication, so only do it on a network you trust. Switching it
+  drops open connections, so anything playing at that moment restarts.
+- Casting hands the TV a URL on your LAN address. If the app is listening on loopback only,
+  casting refuses with an explanation rather than sending the TV a `127.0.0.1` link it
+  could never fetch.
 - Nothing is sent anywhere: add-on requests go straight from your machine to the add-on
   you installed, and downloads are ordinary BitTorrent traffic. Your IP is visible to the
   swarm, exactly as with any torrent client.

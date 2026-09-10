@@ -71,6 +71,16 @@ export const api = {
   streamUrl: (id, fileIdx) => `/api/stream/${encodeURIComponent(id)}${fileIdx === undefined || fileIdx === null ? '' : `/${fileIdx}`}`,
   subtitleUrl: url => `/api/subtitle${qs({ url })}`,
 
+  network: () => request('/api/network'),
+  exposeNetwork: enabled => request('/api/network/expose', { method: 'POST', body: { enabled } }),
+
+  castDevices: (refresh = false) => request(`/api/cast/devices${refresh ? '?refresh=1' : ''}`),
+  castAddDevice: location => request('/api/cast/devices', { method: 'POST', body: { location } }),
+  castForget: id => request(`/api/cast/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  castPlay: body => request('/api/cast/play', { method: 'POST', body }),
+  castControl: (id, action, value = null) => request(`/api/cast/${encodeURIComponent(id)}/control`, { method: 'POST', body: { action, value } }),
+  castStatus: id => request(`/api/cast/${encodeURIComponent(id)}/status`),
+
   disk: () => request('/api/disk'),
   clearCache: () => request('/api/cache/clear', { method: 'POST' })
 }

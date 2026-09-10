@@ -5,6 +5,7 @@ import { config } from './config.js'
 import { engine } from './torrent.js'
 import { addons } from './addons.js'
 import api from './routes/api.js'
+import { localAddresses, isLanReachable } from './network.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const publicDir = path.join(here, '..', 'public')
@@ -42,29 +43,66 @@ app.use((err, req, res, next) => {
 })
 
 const settings = config.get()
-const server = app.listen(settings.port, settings.host, () => {
-  engine.start()
-  addons.refreshManifests()
+let server = null
+
+function start (host, port, { announce = true } = {}) {
+  return new Promise((resolve, reject) => {
+    const next = app.listen(port, host, () => {
+      // Streaming clients hold connections open for a long time; do not cut
+      // them off mid-seek with the default 2 minute timeout.
+      next.headersTimeout = 0
+      next.requestTimeout = 0
+      next.timeout = 0
+      server = next
+      if (announce) banner(host, port)
+      resolve(next)
+    })
+    next.on('error', err => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${port} is already in use. Change it with PORT=<port> npm start.`)
+        if (!server) process.exit(1)
+      }
+      reject(err)
+    })
+  })
+}
+
+function banner (host, port) {
+  const reachable = isLanReachable(host)
   console.log('')
   console.log('  StreamHouse is running')
-  console.log(`  UI          http://${settings.host}:${settings.port}`)
-  console.log(`  Downloads   ${settings.downloadDir}`)
-  console.log('')
-})
-
-server.on('error', err => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${settings.port} is already in use. Change it with PORT=<port> npm start.`)
-    process.exit(1)
+  console.log(`  On this computer   http://127.0.0.1:${port}`)
+  if (reachable) {
+    for (const entry of localAddresses()) {
+      console.log(`  On your network    http://${entry.address}:${port}   ← open this on your TV`)
+    }
+    if (!localAddresses().length) console.log('  On your network    (no network address found)')
+  } else {
+    console.log('  On your network    off — turn on "Allow other devices" in Settings to use a TV')
   }
-  throw err
-})
+  console.log(`  Downloads          ${config.get().downloadDir}`)
+  console.log('')
+}
 
-// Streaming clients hold connections open for a long time; do not cut them off
-// mid-seek with the default 2 minute timeout.
-server.headersTimeout = 0
-server.requestTimeout = 0
-server.timeout = 0
+// Lets Settings switch between loopback-only and the whole network live.
+// Existing sockets (including the request that asked for the switch, and any
+// video being streamed) must be dropped, or close() waits on them forever.
+app.locals.rebind = async (host, port) => {
+  const old = server
+  server = null
+  if (old) {
+    await new Promise(resolve => {
+      old.close(resolve)
+      old.closeAllConnections?.()
+    })
+  }
+  await start(host, port)
+  return { host, port }
+}
+
+await start(settings.host, settings.port)
+engine.start()
+addons.refreshManifests()
 
 // A malformed torrent or a dropped peer connection must never take the whole
 // app down while downloads are in flight.
@@ -80,7 +118,7 @@ async function shutdown () {
   if (shuttingDown) return
   shuttingDown = true
   console.log('\nStopping StreamHouse…')
-  server.close()
+  server?.close()
   await engine.destroy()
   process.exit(0)
 }

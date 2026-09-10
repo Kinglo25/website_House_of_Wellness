@@ -1,5 +1,7 @@
 import { api } from '../api.js'
 import { h, esc, toast, bytes } from '../util.js'
+import { setTvMode } from '../tv.js'
+import { castPicker } from '../cast.js'
 
 // Everything the engine and the UI read at runtime, editable in one place.
 export default async function settings ({ container }) {
@@ -7,7 +9,11 @@ export default async function settings ({ container }) {
   const root = container.querySelector('#settings')
   root.append(h('<h1>Settings</h1>'))
 
-  const [config, disk] = await Promise.all([api.getConfig(), api.disk().catch(() => null)])
+  const [config, disk, network] = await Promise.all([
+    api.getConfig(),
+    api.disk().catch(() => null),
+    api.network().catch(() => null)
+  ])
   const grid = h('<div class="settings-grid"></div>')
   root.append(grid)
 
@@ -57,7 +63,91 @@ export default async function settings ({ container }) {
     return node
   }
 
-  grid.append(h('<h2 style="margin-top:8px">Downloads</h2>'))
+  /* ------------------------------------------------------------ TV */
+
+  grid.append(h('<h2 style="margin-top:8px">TV</h2>'))
+
+  const tvPanel = h(`
+    <div class="setting" style="align-items:flex-start">
+      <div class="label">
+        <b>Allow other devices</b>
+        <span class="tiny muted">Let your TV, phone or tablet reach StreamHouse over your home
+        network. Off means this computer only — which is why a TV cannot find it.</span>
+        <div id="tv-address" style="margin-top:12px"></div>
+      </div>
+      <div class="switch ${network?.reachable ? 'on' : ''}" id="tv-expose"><i></i></div>
+    </div>`)
+  grid.append(tvPanel)
+
+  function drawAddress (info) {
+    const box = tvPanel.querySelector('#tv-address')
+    box.innerHTML = ''
+    if (!info?.reachable) {
+      box.append(h('<div class="tiny muted">Turn this on, then type the address that appears here into your TV\'s web browser.</div>'))
+      return
+    }
+    if (!info.urls?.length) {
+      box.append(h('<div class="tiny" style="color:#ff9ba4">No network address found — is this machine connected to your network?</div>'))
+      return
+    }
+    box.append(h(`
+      <div>
+        <div class="tiny muted" style="margin-bottom:6px">Open this on your TV:</div>
+        ${info.urls.map(url => `<div class="mono" style="font-size:22px;font-weight:700;color:#c2b0ff">${esc(url)}</div>`).join('')}
+        <div class="tiny muted" style="margin-top:8px">No password — anyone on your network can open it.</div>
+      </div>`))
+  }
+  drawAddress(network)
+
+  tvPanel.querySelector('#tv-expose').addEventListener('click', async event => {
+    const toggle = event.currentTarget
+    const next = !toggle.classList.contains('on')
+    toggle.classList.toggle('on', next)
+    try {
+      const result = await api.exposeNetwork(next)
+      toast(result.note, 'ok')
+      // The server rebinds a moment later; read the new state back after that.
+      setTimeout(async () => {
+        const fresh = await api.network().catch(() => null)
+        drawAddress(fresh)
+      }, 900)
+    } catch (err) {
+      toggle.classList.toggle('on', !next)
+      toast(err.message, 'err')
+    }
+  })
+
+  const tvModePanel = h(`
+    <div class="setting">
+      <div class="label">
+        <b>Ten-foot mode</b>
+        <span class="tiny muted">Bigger text and remote-control navigation — arrow keys move the
+        highlight, OK selects, Back goes back. Detected automatically on smart TVs.</span>
+      </div>
+      <div class="switch ${document.documentElement.classList.contains('tv') ? 'on' : ''}"><i></i></div>
+    </div>`)
+  tvModePanel.querySelector('.switch').addEventListener('click', event => {
+    const toggle = event.currentTarget
+    const next = !toggle.classList.contains('on')
+    toggle.classList.toggle('on', next)
+    setTvMode(next)
+    toast(next ? 'Ten-foot mode on — use the arrow keys' : 'Ten-foot mode off', 'ok')
+  })
+  grid.append(tvModePanel)
+
+  const castPanel = h(`
+    <div class="setting">
+      <div class="label">
+        <b>Cast to a TV</b>
+        <span class="tiny muted">Send video to a DLNA device on your network and use this page as
+        the remote. Enable AllShare (Samsung), SmartShare (LG) or Home network (Sony) on the TV first.</span>
+      </div>
+      <div class="control"><button class="btn" id="cast-scan">Find devices</button></div>
+    </div>`)
+  castPanel.querySelector('#cast-scan').addEventListener('click', () => castPicker({ title: 'StreamHouse' }))
+  grid.append(castPanel)
+
+  grid.append(h('<h2 style="margin-top:22px">Downloads</h2>'))
   grid.append(textSetting({
     key: 'downloadDir',
     title: 'Download folder',
@@ -124,7 +214,7 @@ export default async function settings ({ container }) {
   grid.append(textSetting({
     key: 'host',
     title: 'Bind address',
-    hint: '127.0.0.1 keeps it local; 0.0.0.0 exposes it to your network (restart required)',
+    hint: 'set by the TV switch above — 127.0.0.1 is this computer only, 0.0.0.0 is your whole network',
     value: config.host
   }))
 

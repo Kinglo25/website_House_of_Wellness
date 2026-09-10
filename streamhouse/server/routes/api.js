@@ -6,6 +6,8 @@ import { addons, clearAddonCache } from '../addons.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { JsonStore } from '../store.js'
 import { mimeFor, isBrowserPlayable, srtToVtt } from '../mime.js'
+import { localAddresses, lanUrl, isLanReachable } from '../network.js'
+import * as cast from '../cast.js'
 
 const library = new JsonStore('library', [])
 const progress = new JsonStore('progress', {})
@@ -265,6 +267,101 @@ router.get('/playback/:id', wrap(async (req, res) => {
     savePath: path.join(record.savePath, file.path),
     files: torrent.files.map((entry, index) => ({ index, name: entry.name, length: entry.length }))
   })
+}))
+
+/* ------------------------------------------------------------- network */
+
+// What address a TV, phone or tablet on the same network should open.
+router.get('/network', (req, res) => {
+  const settings = config.get()
+  const addresses = localAddresses()
+  res.json({
+    host: settings.host,
+    port: settings.port,
+    reachable: isLanReachable(settings.host),
+    addresses,
+    urls: addresses.map(entry => `http://${entry.address}:${settings.port}`),
+    primaryUrl: lanUrl(settings.port)
+  })
+})
+
+// Flip between loopback-only and listening on the whole network, without
+// making the user restart the app from a terminal.
+router.post('/network/expose', wrap(async (req, res) => {
+  const enabled = req.body?.enabled !== false
+  const host = enabled ? '0.0.0.0' : '127.0.0.1'
+  config.update({ host })
+
+  // Answer first: rebinding drops every open socket, this request included.
+  res.json({
+    host,
+    reachable: isLanReachable(host),
+    primaryUrl: lanUrl(config.get().port),
+    note: enabled
+      ? 'Anyone on your network can now open StreamHouse. There is no password, and playback in progress restarts.'
+      : 'StreamHouse is back to this computer only.'
+  })
+
+  const rebind = req.app.locals.rebind
+  if (typeof rebind !== 'function') return
+  res.on('finish', () => {
+    setTimeout(() => {
+      rebind(host, config.get().port).catch(err => console.error('[network] rebind failed:', err.message))
+    }, 50).unref?.()
+  })
+}))
+
+/* ---------------------------------------------------------------- casting */
+
+router.get('/cast/devices', wrap(async (req, res) => {
+  res.json(await cast.listDevices({ refresh: req.query.refresh === '1' }))
+}))
+
+router.post('/cast/devices', wrap(async (req, res) => {
+  res.status(201).json(await cast.addManual(req.body?.location))
+}))
+
+router.delete('/cast/devices/:id', (req, res) => {
+  res.json({ removed: cast.forgetDevice(req.params.id) })
+})
+
+// Hand a TV the URL of something in the library, or any direct URL.
+router.post('/cast/play', wrap(async (req, res) => {
+  const { deviceId, torrentId, fileIdx, url, title, subtitleUrl } = req.body || {}
+  if (!deviceId) return res.status(400).json({ error: 'Pick a device to cast to' })
+
+  const settings = config.get()
+  let target = url
+  let name = title
+  let mime = 'video/mp4'
+
+  if (torrentId) {
+    const address = lanUrl(settings.port)
+    if (!address) {
+      return res.status(409).json({ error: 'This computer has no network address, so a TV cannot reach it' })
+    }
+    if (!isLanReachable(settings.host)) {
+      return res.status(409).json({
+        error: 'StreamHouse is only listening on this computer, so your TV cannot fetch the video. Turn on "Allow other devices" in Settings first.'
+      })
+    }
+    const { torrent, file, fileIndex } = await engine.file(torrentId, fileIdx ?? null)
+    target = `${address}/api/stream/${torrent.infoHash}/${fileIndex}`
+    name = name || file.name
+    mime = mimeFor(file.name)
+  }
+
+  if (!target) return res.status(400).json({ error: 'Nothing to cast' })
+  res.json(await cast.play(deviceId, { url: target, title: name, mime, subtitleUrl }))
+}))
+
+router.post('/cast/:id/control', wrap(async (req, res) => {
+  await cast.control(req.params.id, req.body?.action, req.body?.value)
+  res.json({ ok: true })
+}))
+
+router.get('/cast/:id/status', wrap(async (req, res) => {
+  res.json(await cast.status(req.params.id))
 }))
 
 /* ------------------------------------------------------------ maintenance */

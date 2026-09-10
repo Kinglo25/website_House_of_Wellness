@@ -1,6 +1,7 @@
 import { route, startRouter, navigate, currentPath } from './router.js'
 import { api } from './api.js'
 import { bytes, debounce } from './util.js'
+import { initTvMode } from './tv.js'
 
 import board from './views/board.js'
 import discover from './views/discover.js'
@@ -71,6 +72,7 @@ setInterval(pollStats, 2000)
 /* -------------------------------------------------------------------- boot */
 
 if (!location.hash) location.hash = '#/board'
+initTvMode()
 startRouter()
 
 // Keep the search box in sync when the route changes underneath it.

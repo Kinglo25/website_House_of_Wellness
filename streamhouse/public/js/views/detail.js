@@ -1,6 +1,7 @@
 import { api } from '../api.js'
 import { h, esc, toast, bytes, confirmDialog, posterUrl } from '../util.js'
 import { errorBox, skeletonStrip } from '../components.js'
+import { castButton } from '../cast.js'
 
 // Title page: metadata, episode picker for series, and the list of streams the
 // add-ons return — each one playable in the browser or downloadable to disk.
@@ -207,6 +208,7 @@ function streamRow (stream, { type, meta, state }) {
       <div class="actions">
         <button class="btn primary small" data-act="play">▶ Play</button>
         ${stream.downloadable ? '<button class="btn small" data-act="download">⭳ Download</button>' : ''}
+        <span data-slot="cast"></span>
         <button class="btn small icon ghost" data-act="more" title="More">⋯</button>
       </div>
     </div>`)
@@ -220,6 +222,22 @@ function streamRow (stream, { type, meta, state }) {
     season: state.season,
     episode: state.episode
   }
+
+  // Casting needs the torrent running locally first, so the TV has something
+  // to pull from; adding it is idempotent.
+  row.querySelector('[data-slot="cast"]').append(castButton(async () => {
+    if (stream.infoHash) {
+      const record = await api.addTorrent({
+        infoHash: stream.infoHash,
+        sources: stream.sources || [],
+        fileIdx: stream.fileIdx ?? null,
+        mode: 'stream',
+        meta: playbackMeta
+      })
+      return { torrentId: record.id, fileIdx: stream.fileIdx ?? null, title: playbackMeta.title }
+    }
+    return { url: stream.url, title: playbackMeta.title }
+  }))
 
   row.querySelector('[data-act="play"]').addEventListener('click', async event => {
     const button = event.currentTarget

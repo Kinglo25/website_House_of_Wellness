@@ -1,5 +1,6 @@
 import { api } from '../api.js'
 import { h, esc, clock, toast, bytes } from '../util.js'
+import { castPicker } from '../cast.js'
 
 // Full-screen video player. Torrent playback streams from the local engine
 // over HTTP byte ranges, so seeking works while the file is still downloading.
@@ -23,6 +24,7 @@ export default async function player ({ params, query, container }) {
         <div class="tiny muted" id="pl-sub"></div>
       </div>
       <div style="flex:1"></div>
+      <button class="btn ghost small" data-act="cast">📺 Play on TV</button>
       <button class="btn ghost small" data-act="keep">⭳ Keep this file</button>
       <button class="btn ghost small" data-act="external">Open elsewhere</button>
     </div>`)
@@ -242,6 +244,15 @@ export default async function player ({ params, query, container }) {
       await navigator.clipboard.writeText(location.origin + src).catch(() => {})
       toast('Stream link copied — paste it into VLC, MPV or IINA', 'ok')
     }
+    if (act === 'cast') {
+      video.pause()
+      castPicker({
+        torrentId: kind === 'torrent' ? state.id : null,
+        fileIdx: state.fileIdx,
+        url: kind === 'torrent' ? null : src,
+        title: meta.title || root.querySelector('#pl-title').textContent
+      })
+    }
     if (act === 'keep') {
       if (kind !== 'torrent') return toast('Only torrent streams can be kept', 'err')
       try {
@@ -266,8 +277,15 @@ export default async function player ({ params, query, container }) {
         break
       case 'ArrowLeft': video.currentTime -= 5; break
       case 'ArrowRight': video.currentTime += 5; break
-      case 'ArrowUp': video.volume = Math.min(1, video.volume + 0.1); break
-      case 'ArrowDown': video.volume = Math.max(0, video.volume - 0.1); break
+      case 'ArrowUp':
+      case 'ArrowDown': {
+        // In TV mode up/down move focus between the on-screen controls; the
+        // remote's own volume keys never reach the browser anyway.
+        if (document.documentElement.classList.contains('tv')) return
+        const step = event.key === 'ArrowUp' ? 0.1 : -0.1
+        video.volume = Math.min(1, Math.max(0, video.volume + step))
+        break
+      }
       case 'f': document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen?.(); break
       case 'm': video.muted = !video.muted; break
       case 'Escape': if (!document.fullscreenElement) history.back(); break

@@ -1,6 +1,7 @@
 import { api } from '../api.js'
 import { h, esc, bytes, duration, percent, toast, confirmDialog } from '../util.js'
 import { emptyState } from '../components.js'
+import { castButton } from '../cast.js'
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -195,6 +196,7 @@ export default async function downloads ({ container }) {
           </div>
           <div class="actions">
             ${torrent.playableIndex !== null ? '<button class="btn small primary" data-act="play">▶ Play</button>' : ''}
+            ${torrent.playableIndex !== null ? '<span data-slot="cast"></span>' : ''}
             <button class="btn small" data-act="toggle">${torrent.status === 'paused' ? '▶ Resume' : '⏸ Pause'}</button>
             <button class="btn small ghost" data-act="files">Files (${torrent.files.length})</button>
             <button class="btn small ghost" data-act="where" title="Where is it saved?">📁</button>
@@ -206,6 +208,12 @@ export default async function downloads ({ container }) {
       </div>`)
 
     if (state.expanded.has(torrent.id)) node.append(fileList(torrent))
+
+    node.querySelector('[data-slot="cast"]')?.append(castButton({
+      torrentId: torrent.id,
+      fileIdx: torrent.playableIndex,
+      title: torrent.meta?.title || torrent.name
+    }))
 
     node.querySelector('[data-act="play"]')?.addEventListener('click', () => {
       location.hash = `#/player/torrent/${torrent.id}?fileIdx=${torrent.playableIndex}&meta=${encodeURIComponent(JSON.stringify(torrent.meta || { title: torrent.name }))}`
