@@ -63,6 +63,63 @@ export function detectHost ({
   return { wsl, docker, virtualOnly, reachable, warning, hostname: os.hostname() }
 }
 
+
+/* Not every address a machine has is one a phone can reach. On Windows in
+ * particular, WSL, Docker Desktop and Hyper-V each add a virtual adapter whose
+ * address looks just as plausible as the real Wi-Fi one. */
+
+const VIRTUAL_NAMES = /vethernet|wsl|hyper-?v|virtualbox|vmware|docker|vpn|tailscale|zerotier|tap-|utun|bridge|loopback/i
+
+export function isVirtualInterface (name = '', address = '') {
+  return VIRTUAL_NAMES.test(name) || isVirtualAddress(address)
+}
+
+// Sorted best-first, each marked so the banner can label it.
+export function rankInterfaces (interfaces = []) {
+  return interfaces
+    .map(entry => {
+      const virtual = isVirtualInterface(entry.name, entry.address)
+      return { ...entry, virtual, home: isHomeAddress(entry.address) }
+    })
+    .sort((a, b) => {
+      if (a.virtual !== b.virtual) return a.virtual ? 1 : -1
+      if (a.home !== b.home) return a.home ? -1 : 1
+      return 0
+    })
+    .map((entry, index) => ({ ...entry, recommended: index === 0 && !entry.virtual }))
+}
+
+// The lines the startup banner prints for each address.
+export function describeAddresses (interfaces, port, label) {
+  const ranked = rankInterfaces(interfaces)
+  const lines = []
+  ranked.forEach((entry, index) => {
+    const prefix = index === 0 ? label : ' '.repeat(label.length)
+    const url = `http://${entry.address}:${port}`
+    const adapter = entry.name ? `  (${entry.name})` : ''
+    const note = entry.recommended
+      ? '  ← use this one'
+      : entry.virtual
+        ? '  — virtual adapter, a phone cannot reach this'
+        : ''
+    lines.push(`${prefix}${url.padEnd(26)}${adapter}${note}`)
+  })
+  if (!ranked.length) lines.push(`${label}(no network address found — is this machine on your network?)`)
+  return lines
+}
+
+// Windows blocks inbound connections to Node until told otherwise, and this is
+// the next thing to trip over once the right address is in hand.
+export function firewallHint (port, appName, platform = process.platform) {
+  if (platform !== 'win32') return []
+  return [
+    'If the phone still times out, allow it through Windows Firewall.',
+    'In PowerShell as Administrator:',
+    `    New-NetFirewallRule -DisplayName "${appName}" -Direction Inbound \\`,
+    `      -Protocol TCP -LocalPort ${port} -Action Allow -Profile Private`
+  ]
+}
+
 function readProcVersion () {
   try {
     return fs.readFileSync('/proc/version', 'utf8')

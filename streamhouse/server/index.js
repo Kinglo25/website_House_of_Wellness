@@ -7,7 +7,7 @@ import { addons } from './addons.js'
 import api from './routes/api.js'
 import { localAddresses, isLanReachable } from './network.js'
 import { startDiscovery, stopDiscovery } from './discovery.js'
-import { detectHost, printHostWarning } from './environment.js'
+import { detectHost, printHostWarning, describeAddresses, firewallHint } from './environment.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const publicDir = path.join(here, '..', 'public')
@@ -78,15 +78,16 @@ function banner (host, port) {
   printHostWarning(detectHost({ addresses: localAddresses().map(entry => entry.address) }))
   console.log(`  On this computer   http://127.0.0.1:${port}`)
   if (reachable) {
-    for (const entry of localAddresses()) {
-      console.log(`  On your network    http://${entry.address}:${port}   ← open this on your TV`)
-    }
-    if (!localAddresses().length) console.log('  On your network    (no network address found)')
+    for (const line of describeAddresses(localAddresses(), port, '  On your network    ')) console.log(line)
   } else {
     console.log('  On your network    off — turn on "Allow other devices" in Settings to use a TV')
   }
   console.log(`  Downloads          ${config.get().downloadDir}`)
   console.log('')
+  if (reachable) {
+    for (const line of firewallHint(port, 'StreamHouse')) console.log(`  ${line}`)
+    if (process.platform === 'win32') console.log('')
+  }
 }
 
 // Lets Settings switch between loopback-only and the whole network live.

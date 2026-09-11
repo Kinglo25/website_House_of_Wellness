@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url'
 import { config } from './config.js'
 import { getCapabilities, disposeBackend } from './platform/index.js'
 import { localAddresses } from './network.js'
-import { detectHost, printHostWarning } from './environment.js'
+import { detectHost, printHostWarning, describeAddresses, firewallHint } from './environment.js'
 import api from './routes/api.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -40,24 +40,22 @@ const settings = config.get()
 const server = app.listen(settings.port, settings.host, async () => {
   const capabilities = await getCapabilities()
   const addresses = localAddresses()
-  const host = detectHost({ addresses })
+  const host = detectHost({ addresses: addresses.map(entry => entry.address) })
   console.log('')
   console.log('  PC Remote is running')
   console.log('')
   // Say up front when the address below cannot work, rather than letting
   // someone type it into a phone and get a timeout.
   printHostWarning(host, { controlsDesktop: true })
-  if (addresses.length) {
-    for (const address of addresses) console.log(`  On your phone   http://${address}:${settings.port}`)
-  } else {
-    console.log('  No network address found — is this machine on your network?')
-  }
+  for (const line of describeAddresses(addresses, settings.port, '  On your phone   ')) console.log(line)
   console.log('')
   console.log(`  Pairing PIN     ${settings.pin}`)
   console.log('')
   console.log(`  Controlling     ${capabilities.platformName} (${capabilities.hostname})`)
   if (capabilities.note) console.log(`  Note            ${capabilities.note}`)
   console.log('')
+  for (const line of firewallHint(settings.port, 'PC Remote')) console.log(`  ${line}`)
+  if (process.platform === 'win32') console.log('')
 })
 
 server.on('error', err => {
