@@ -15,6 +15,14 @@ app.set('trust proxy', true)
 app.use(express.json({ limit: '256kb' }))
 
 app.use('/api', api)
+
+// Serve the manifest with its proper type; browsers ignore it otherwise, and
+// "Add to Home Screen" then falls back to a plain bookmark.
+app.get('/manifest.webmanifest', (req, res) => {
+  res.type('application/manifest+json')
+  res.sendFile(path.join(publicDir, 'manifest.webmanifest'))
+})
+
 app.use(express.static(publicDir, { extensions: ['html'] }))
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next()
