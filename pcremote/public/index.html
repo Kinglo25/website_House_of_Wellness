@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b17">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>PC Remote</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%237b5bf5'/><rect x='24' y='30' width='52' height='34' rx='5' fill='white'/><rect x='40' y='68' width='20' height='6' rx='3' fill='white'/></svg>">
+</head>
+<body>
+
+<!-- pairing -->
+<section id="pair" class="screen pair-screen">
+  <div class="pair-box">
+    <div class="logo">⌨</div>
+    <h1>PC Remote</h1>
+    <p class="muted" id="pair-host">Enter the PIN shown on your computer</p>
+    <div class="pin-display" id="pin-display"></div>
+    <div class="keypad" id="keypad"></div>
+    <p class="error" id="pair-error" hidden></p>
+  </div>
+</section>
+
+<!-- main -->
+<section id="main" class="screen" hidden>
+  <header class="bar">
+    <div>
+      <div class="host" id="host-name">…</div>
+      <div class="tiny muted" id="host-os"></div>
+    </div>
+    <div class="grow"></div>
+    <button class="icon-btn" id="settings-btn" aria-label="Settings">⚙</button>
+  </header>
+
+  <div class="timer-banner" id="timer-banner" hidden>
+    <span id="timer-banner-text"></span>
+    <button class="btn tiny-btn" data-timer="extend">+10 min</button>
+    <button class="btn tiny-btn danger" data-timer="cancel">Cancel</button>
+  </div>
+
+  <!-- touchpad -->
+  <div class="page" id="page-pad">
+    <div class="pad" id="pad">
+      <div class="pad-hint" id="pad-hint">
+        Drag to move · tap to click<br>
+        two fingers to scroll · two-finger tap for right click
+      </div>
+    </div>
+    <div class="pad-buttons">
+      <button class="pad-btn" data-click="left">Left</button>
+      <button class="pad-btn" data-click="middle">Middle</button>
+      <button class="pad-btn" data-click="right">Right</button>
+    </div>
+  </div>
+
+  <!-- keyboard -->
+  <div class="page" id="page-keys" hidden>
+    <div class="keys-wrap">
+      <input id="type-input" class="type-input" placeholder="Type here — it goes to the PC" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <div class="key-grid">
+        <button class="key" data-key="Escape">Esc</button>
+        <button class="key" data-key="Tab">Tab</button>
+        <button class="key" data-key="Backspace">⌫</button>
+        <button class="key" data-key="Enter">⏎ Enter</button>
+        <button class="key" data-key="ArrowUp">▲</button>
+        <button class="key" data-key="ArrowDown">▼</button>
+        <button class="key" data-key="ArrowLeft">◀</button>
+        <button class="key" data-key="ArrowRight">▶</button>
+        <button class="key" data-key="PageUp">Pg ▲</button>
+        <button class="key" data-key="PageDown">Pg ▼</button>
+        <button class="key" data-key="Home">Home</button>
+        <button class="key" data-key="End">End</button>
+      </div>
+      <div class="section-label">Shortcuts</div>
+      <div class="key-grid">
+        <button class="key" data-combo="ctrl,c">Copy</button>
+        <button class="key" data-combo="ctrl,v">Paste</button>
+        <button class="key" data-combo="ctrl,z">Undo</button>
+        <button class="key" data-combo="alt,Tab">Switch app</button>
+        <button class="key" data-combo="meta,d">Desktop</button>
+        <button class="key" data-key="F11">Fullscreen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- media -->
+  <div class="page" id="page-media" hidden>
+    <div class="media-wrap">
+      <div class="media-row">
+        <button class="media-btn" data-media="previous">⏮</button>
+        <button class="media-btn big" data-media="playpause">⏯</button>
+        <button class="media-btn" data-media="next">⏭</button>
+      </div>
+      <div class="section-label">Volume</div>
+      <div class="media-row">
+        <button class="media-btn" data-media="volumedown">🔉 −</button>
+        <button class="media-btn" data-media="mute">🔇</button>
+        <button class="media-btn" data-media="volumeup">🔊 +</button>
+      </div>
+      <p class="tiny muted" id="media-note"></p>
+    </div>
+  </div>
+
+  <!-- bed timer -->
+  <div class="page" id="page-timer" hidden>
+    <div class="timer-wrap">
+      <div class="countdown" id="countdown" hidden>
+        <div class="countdown-time" id="countdown-time">--:--</div>
+        <div class="tiny muted" id="countdown-what"></div>
+        <div class="row" style="margin-top:18px">
+          <button class="btn" data-timer="extend">+10 min</button>
+          <button class="btn danger" data-timer="cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div id="timer-setup">
+        <div class="section-label">Then</div>
+        <div class="chips" id="timer-actions"></div>
+        <div class="section-label">In</div>
+        <div class="presets" id="timer-presets"></div>
+        <div class="row" style="margin-top:14px">
+          <input id="timer-custom" class="type-input" type="number" min="1" max="720" placeholder="minutes">
+          <button class="btn primary" id="timer-start">Start</button>
+        </div>
+        <p class="tiny muted" style="margin-top:16px">
+          The countdown runs on the computer, so it still happens if your phone
+          sleeps, locks or goes out of range.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- power -->
+  <div class="page" id="page-power" hidden>
+    <div class="power-wrap">
+      <button class="power-btn danger" data-power="shutdown">⏻ Shut down</button>
+      <button class="power-btn" data-power="sleep">🌙 Sleep</button>
+      <button class="power-btn" data-power="lock">🔒 Lock screen</button>
+      <button class="power-btn" data-power="restart">↻ Restart</button>
+      <button class="power-btn" data-power="logoff">👋 Sign out</button>
+    </div>
+  </div>
+
+  <nav class="tabs">
+    <button class="tab active" data-page="pad"><span>🖱</span>Touchpad</button>
+    <button class="tab" data-page="keys"><span>⌨</span>Keys</button>
+    <button class="tab" data-page="media"><span>🎵</span>Media</button>
+    <button class="tab" data-page="timer"><span>⏱</span>Bedtime</button>
+    <button class="tab" data-page="power"><span>⏻</span>Power</button>
+  </nav>
+</section>
+
+<div id="sheet-root"></div>
+<div id="toasts"></div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "pcremote",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Control this computer from your phone: trackpad, keyboard, media keys, power and a bedtime timer.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node test/run.js"
+  },
+  "engines": { "node": ">=18.17" },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
