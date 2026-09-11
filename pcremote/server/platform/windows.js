@@ -112,7 +112,10 @@ export class WindowsBackend {
     })
     this.proc.on('error', () => { this.proc = null })
     this.proc.on('exit', () => { this.proc = null })
-    this.proc.stdin.write(`${BOOTSTRAP}\n`)
+    // `-Command -` reads stdin like an interactive prompt: a multi-line block
+    // (the here-string, the functions) only runs once a blank line ends it.
+    // Without one, every command after it is swallowed into that block.
+    this.proc.stdin.write(`${BOOTSTRAP}\n\n`)
     return this.proc
   }
 
@@ -155,7 +158,9 @@ export class WindowsBackend {
   key (name) {
     const sequence = KEYS[name]
     if (!sequence) throw new Error(`Unknown key: ${name}`)
-    this.send(`TypeB64 '${Buffer.from(sequence, 'utf8').toString('base64')}'`)
+    // Raw, not TypeB64: that escapes braces, so {ENTER} would be typed out as
+    // text. The sequences are fixed constants above, never user input.
+    this.send(`SendKeysRaw '${sequence}'`)
   }
 
   combo (keys) {
