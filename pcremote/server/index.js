@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import { config } from './config.js'
 import { getCapabilities, disposeBackend } from './platform/index.js'
 import { localAddresses } from './network.js'
+import { detectHost, printHostWarning } from './environment.js'
 import api from './routes/api.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -39,9 +40,13 @@ const settings = config.get()
 const server = app.listen(settings.port, settings.host, async () => {
   const capabilities = await getCapabilities()
   const addresses = localAddresses()
+  const host = detectHost({ addresses })
   console.log('')
   console.log('  PC Remote is running')
   console.log('')
+  // Say up front when the address below cannot work, rather than letting
+  // someone type it into a phone and get a timeout.
+  printHostWarning(host, { controlsDesktop: true })
   if (addresses.length) {
     for (const address of addresses) console.log(`  On your phone   http://${address}:${settings.port}`)
   } else {

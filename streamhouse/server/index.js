@@ -7,6 +7,7 @@ import { addons } from './addons.js'
 import api from './routes/api.js'
 import { localAddresses, isLanReachable } from './network.js'
 import { startDiscovery, stopDiscovery } from './discovery.js'
+import { detectHost, printHostWarning } from './environment.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const publicDir = path.join(here, '..', 'public')
@@ -72,6 +73,9 @@ function banner (host, port) {
   const reachable = isLanReachable(host)
   console.log('')
   console.log('  StreamHouse is running')
+  // A virtual network (WSL, Docker, a VM) is the usual reason a TV or phone
+  // cannot reach the address printed below.
+  printHostWarning(detectHost({ addresses: localAddresses().map(entry => entry.address) }))
   console.log(`  On this computer   http://127.0.0.1:${port}`)
   if (reachable) {
     for (const entry of localAddresses()) {
