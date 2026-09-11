@@ -80,8 +80,11 @@ console.log('\nWindows backend (dry run — the exact PowerShell it would send)'
   win.type('café ✓ 日本語')
   ok('unicode survives', Buffer.from(win.sent.at(-1).match(/'([^']+)'/)[1], 'base64').toString('utf8') === 'café ✓ 日本語')
 
+  // Named keys must bypass TypeB64, whose brace escaping types "{ENTER}" as text.
   win.key('Enter')
-  ok('Enter maps to SendKeys {ENTER}', Buffer.from(win.sent.at(-1).match(/'([^']+)'/)[1], 'base64').toString('utf8') === '{ENTER}')
+  ok('Enter is sent as a raw SendKeys {ENTER}', win.sent.at(-1) === "SendKeysRaw '{ENTER}'", win.sent.at(-1))
+  win.key('Backspace')
+  ok('Backspace is sent as a raw SendKeys {BACKSPACE}', win.sent.at(-1) === "SendKeysRaw '{BACKSPACE}'", win.sent.at(-1))
 
   win.combo(['ctrl', 'c'])
   ok('ctrl+c becomes ^c', win.sent.at(-1) === "SendKeysRaw '^c'", win.sent.at(-1))
