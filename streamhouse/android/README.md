@@ -63,6 +63,49 @@ an installed copy compares itself against. A locally built APK stays at version
 Point the check somewhere else — your own fork's release — with
 **tvReleaseApi** in the server's `config.json`.
 
+### The signing key (do this once)
+
+Android installs an update only over an app signed with the same key. Without a
+key of its own the build falls back to Android's debug key, which is generated
+per machine — so two CI builds cannot replace each other and every update ends
+in *App not installed*. One key, added once as a repository secret, fixes that
+for good.
+
+Make the key on your own computer — it should never be in the repository, which
+is public:
+
+```bash
+keytool -genkeypair -v \
+  -keystore streamhouse.jks \
+  -alias streamhouse \
+  -keyalg RSA -keysize 4096 -validity 10000 \
+  -storepass '<a password you choose>' \
+  -keypass  '<the same password>' \
+  -dname 'CN=StreamHouse TV, O=StreamHouse'
+```
+
+Then hand it to GitHub Actions (`gh auth login` first if needed):
+
+```bash
+base64 -w0 streamhouse.jks | gh secret set ANDROID_KEYSTORE_BASE64
+gh secret set ANDROID_KEYSTORE_PASSWORD --body '<the same password>'
+```
+
+On macOS, `base64 -w0` is `base64 -i streamhouse.jks | tr -d '\n'`.
+
+**Keep `streamhouse.jks` and its password somewhere safe** — a password manager,
+a backup drive. A secret cannot be read back out of GitHub, and losing the key
+means every TV has to uninstall and reinstall before it can update again.
+
+Two other secrets are read if you set them: `ANDROID_KEY_ALIAS` (default
+`streamhouse`) and `ANDROID_KEY_PASSWORD` (defaults to the store password), so
+the two above are enough if you follow the commands as written.
+
+The build after that is the first one signed with your key. Because whatever is
+on the TV now is signed with a throwaway one, that build is the last that has to
+go on by hand: uninstall StreamHouse on the TV, install the new APK, and updates
+from then on install themselves.
+
 ## First run
 
 1. Start StreamHouse on your computer and turn on **Settings → TV → Allow other
