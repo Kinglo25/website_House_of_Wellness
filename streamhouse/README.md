@@ -96,6 +96,10 @@ computer, and the phone opens it in its browser. Turn on **Settings → TV → A
 devices** (or start with `HOST=0.0.0.0 npm start`), then open the network address the
 banner prints — `http://192.168.1.34:11471` — on the phone, over the same Wi-Fi.
 
+On a narrow screen the layout rearranges itself: the icon rail moves to the bottom of
+the screen as a tab bar, posters shrink to three across, and rows that put a name beside
+a pile of buttons — streams, downloads, add-ons, every settings row — stack instead.
+
 Add it to the home screen and it behaves like an app: its own name and icon rather
 than a screenshot of the page.
 
