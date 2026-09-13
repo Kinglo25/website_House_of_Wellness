@@ -214,8 +214,14 @@ is fine and plays anywhere else.
 
 The player streams over HTTP byte ranges from the local engine, so seeking works while
 the file is still downloading. Keyboard: `space`/`k` play-pause, `←`/`→` 5s, `↑`/`↓`
-volume, `f` fullscreen, `m` mute, `esc` back. Playback position is remembered and shows
-up under *Continue watching*.
+volume, `f` fullscreen, `m` mute, `esc` back.
+
+Playback position is remembered every ten seconds and whenever you leave the player, and
+shows up under *Continue watching* on the home page and in the library. A tile there goes
+straight back into the file it was playing, at the second it stopped — not to the title
+page. If the stream it came from has since gone (a cached stream cleaned up, a source that
+dried up), the player offers **Pick another stream**: choose a new one and it carries on
+from the same position. Titles watched to the end drop off the list by themselves.
 
 Browsers only decode some formats (MP4/WebM reliably; MKV and HEVC often not). If a file
 will not play, hit **Open elsewhere** — it copies a local URL you can paste straight into

@@ -1,6 +1,6 @@
 import { api } from '../api.js'
 import { h, esc, confirmDialog, toast } from '../util.js'
-import { metaCard, emptyState } from '../components.js'
+import { metaCard, continueCard, emptyState } from '../components.js'
 
 // Saved titles plus anything with a saved playback position.
 export default async function library ({ container }) {
@@ -8,7 +8,11 @@ export default async function library ({ container }) {
   const root = container.querySelector('#library')
   root.append(h('<h1>Library</h1>'))
 
-  const [items, progress] = await Promise.all([api.library(), api.progress()])
+  // Neither half should be able to hide the other if its request fails.
+  const [items, progress] = await Promise.all([
+    api.library().catch(() => []),
+    api.progress().catch(() => ({}))
+  ])
   const watching = Object.values(progress).sort((a, b) => b.updatedAt - a.updatedAt)
 
   if (watching.length) {
@@ -16,10 +20,9 @@ export default async function library ({ container }) {
     const grid = h('<div class="grid"></div>')
     watching.forEach(entry => {
       const meta = entry.meta || { name: entry.id, id: entry.id, type: 'movie' }
-      const card = metaCard(meta, {
-        progress: entry.duration ? entry.time / entry.duration : 0,
-        sub: entry.duration ? `${Math.round((entry.duration - entry.time) / 60)} min left` : ''
-      })
+      // Same tile as the home shelf: clicking it picks the file back up where
+      // it stopped instead of opening the title page again.
+      const card = continueCard(entry)
       card.addEventListener('contextmenu', async event => {
         event.preventDefault()
         if (await confirmDialog({ title: 'Forget progress?', body: `<p class="muted">Remove “${esc(meta.name || entry.id)}” from continue watching.</p>`, confirmLabel: 'Forget', danger: true })) {

@@ -22,6 +22,11 @@
 
 * { box-sizing: border-box; }
 
+/* The `display` rules below are set by classes, and an author rule beats the
+   browser's own `[hidden] { display: none }` however it is written — so without
+   this, setting `hidden` on an element in JS does nothing at all. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -356,7 +361,12 @@ select.field option { background: var(--bg-elevated); }
 .buffering {
   position: absolute; inset: 0; display: grid; place-items: center;
   background: rgba(0,0,0,0.55); text-align: center; gap: 12px;
+  /* It covers the controls, so let clicks through to them; its own panel
+     (the spinner, or the "cannot decode" message and its buttons) still
+     takes them. */
+  pointer-events: none;
 }
+.buffering > * { pointer-events: auto; }
 .spinner {
   width: 42px; height: 42px; border-radius: 50%;
   border: 3px solid rgba(255,255,255,0.16); border-top-color: var(--accent);
