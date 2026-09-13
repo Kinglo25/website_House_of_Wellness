@@ -40,6 +40,9 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
+    // The player hands its result back to the WebView, which is what starts
+    // the next episode.
+    implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("androidx.media3:media3-ui:1.3.1")
 }

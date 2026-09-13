@@ -2,6 +2,7 @@ import { route, startRouter, navigate, currentPath } from './router.js'
 import { api } from './api.js'
 import { bytes, debounce } from './util.js'
 import { initTvMode } from './tv.js'
+import { nextEpisode, episodeHref } from './playback.js'
 
 import board from './views/board.js'
 import discover from './views/discover.js'
@@ -68,6 +69,25 @@ async function pollStats () {
 }
 pollStats()
 setInterval(pollStats, 2000)
+
+/* ----------------------------------------------------- the Android TV app */
+
+// Playback there belongs to the native player, which knows only a URL and a
+// position. When an episode ends — or the ⏭ key is pressed on the remote — it
+// hands control back here, and the next episode is looked up and started the
+// same way as anywhere else.
+window.addEventListener('streamhouse-playback-ended', async () => {
+  let played = null
+  try {
+    played = JSON.parse(sessionStorage.getItem('sh-native-playback') || 'null')
+  } catch { /* nothing remembered */ }
+  if (!played) return
+  try {
+    const next = await nextEpisode(played)
+    if (!next) return
+    location.hash = await episodeHref(next, played)
+  } catch { /* no next episode to be had */ }
+})
 
 /* -------------------------------------------------------------------- boot */
 

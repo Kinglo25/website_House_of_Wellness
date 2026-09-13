@@ -5,6 +5,8 @@
  * in the direction pressed. That is what this module does, plus the vendor
  * "back" key codes, which differ per platform. */
 
+import { currentPath } from './router.js'
+
 const FOCUSABLE = [
   'a[href]',
   'button:not([disabled])',
@@ -38,8 +40,13 @@ export function setTvMode (on) {
   if (on) setTimeout(() => focusFirst(), 60)
 }
 
+// The player's chrome fades out when it is left alone; while it is faded, its
+// buttons are not somewhere focus should be able to wander.
+const PLAYER_CHROME = '.player-top, .player-bottom, .upnext'
+
 function visible (el) {
   if (el.hidden || el.closest('[hidden]')) return false
+  if (el.closest('.player-wrap.idle')) return false
   const rect = el.getBoundingClientRect()
   if (rect.width < 4 || rect.height < 4) return false
   const style = getComputedStyle(el)
@@ -93,7 +100,13 @@ function nearest (from, direction) {
 }
 
 export function focusFirst () {
-  const first = candidates().find(el => !el.closest('nav.rail')) || candidates()[0]
+  const all = candidates()
+  // Land on something to watch: the first poster if the page has any, and
+  // never the sidebar or the search box — both are one press away, and neither
+  // is any use as the place a remote starts.
+  const first = all.find(el => el.classList.contains('card')) ||
+    all.find(el => !el.closest('nav.rail, header.topbar')) ||
+    all[0]
   first?.focus({ preventScroll: true })
   if (first) scrollIntoView(first)
 }
@@ -124,7 +137,16 @@ function onKeyDown (event) {
     return
   }
 
-  if (key === 'Enter' && document.activeElement && document.activeElement !== document.body) {
+  if (key === 'Enter') {
+    // While the film is playing with the controls faded out, OK means
+    // play/pause — the same as every other TV player.
+    const sleeping = document.querySelector('.player-wrap.idle')
+    if (sleeping) {
+      event.preventDefault()
+      sleeping.querySelector('[data-act="playpause"]')?.click()
+      return
+    }
+    if (!document.activeElement || document.activeElement === document.body) return
     if (document.activeElement.matches('input, textarea, select')) return
     event.preventDefault()
     document.activeElement.click()
@@ -135,9 +157,18 @@ function onKeyDown (event) {
   if (event.target.matches('input[type="range"], select, textarea')) return
   if (event.target.matches('input') && (key === 'ArrowLeft' || key === 'ArrowRight')) return
 
-  // In the player, left/right belong to seeking — the player handles those.
-  const inPlayer = Boolean(document.querySelector('.player-wrap'))
-  if (inPlayer && (key === 'ArrowLeft' || key === 'ArrowRight')) return
+  const player = document.querySelector('.player-wrap')
+  // The first press on a sleeping player brings the controls back rather than
+  // moving an invisible cursor around behind them. The player itself wakes on
+  // any key; this just stops the same press from doing two things at once.
+  if (player?.classList.contains('idle')) {
+    event.preventDefault()
+    return
+  }
+  // Left/right belong to seeking, unless the controls have focus — there they
+  // step along the row of buttons like anywhere else in the app.
+  if (player && (key === 'ArrowLeft' || key === 'ArrowRight') &&
+      !document.activeElement?.closest(PLAYER_CHROME)) return
 
   const active = document.activeElement && document.activeElement !== document.body
     ? document.activeElement
@@ -155,15 +186,38 @@ function onKeyDown (event) {
   scrollIntoView(next)
 }
 
+// Which tile each page was left on, so coming back from a title lands on the
+// poster it was opened from instead of at the start of the row.
+const lastFocus = new Map()
+const hashOf = url => (url.includes('#') ? url.slice(url.indexOf('#') + 1) : '') || '/board'
+
+function restoreFocus (path) {
+  const remembered = lastFocus.get(path)
+  if (!remembered) return false
+  const el = document.querySelector(`[data-open="${CSS.escape(remembered)}"]`)
+  if (!el || !visible(el)) return false
+  el.focus({ preventScroll: true })
+  scrollIntoView(el)
+  return true
+}
+
 export function initTvMode () {
   if (isTvDevice()) document.documentElement.classList.add('tv')
   window.addEventListener('keydown', onKeyDown, true)
+
+  // Runs before the router swaps the view out, so the tile that was just
+  // opened is still on screen to be noted down.
+  window.addEventListener('hashchange', event => {
+    const opened = document.activeElement?.dataset?.open
+    if (opened) lastFocus.set(hashOf(event.oldURL), opened)
+  })
 
   // Every route change lands focus somewhere sensible, or the remote has
   // nothing to move from.
   window.addEventListener('hashchange', () => {
     if (!document.documentElement.classList.contains('tv')) return
     setTimeout(() => {
+      if (restoreFocus(currentPath())) return
       const active = document.activeElement
       if (!active || active === document.body || !visible(active)) focusFirst()
     }, 250)

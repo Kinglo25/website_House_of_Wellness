@@ -22,8 +22,12 @@ export function metaCard (meta, { progress = 0, ribbon = '', sub = '', open = ''
     img.src = posterUrl({ name: title })
   }, { once: true })
 
+  const target = open || detailHref(meta)
+  // Where this tile goes, readable from the DOM: ten-foot mode uses it to put
+  // focus back on the tile a page was opened from.
+  card.dataset.open = target
   const go = () => {
-    location.hash = open || detailHref(meta)
+    location.hash = target
   }
   card.addEventListener('click', go)
   card.addEventListener('keydown', event => {

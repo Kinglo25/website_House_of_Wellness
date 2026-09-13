@@ -1,6 +1,7 @@
 import { api } from '../api.js'
 import { h, esc, clock, toast, bytes } from '../util.js'
 import { castPicker } from '../cast.js'
+import { nextEpisode, episodeHref } from '../playback.js'
 
 // Full-screen video player. Torrent playback streams from the local engine
 // over HTTP byte ranges, so seeking works while the file is still downloading.
@@ -37,6 +38,7 @@ export default async function player ({ params, query, container }) {
         <div class="tiny muted" id="pl-sub"></div>
       </div>
       <div style="flex:1"></div>
+      <button class="btn ghost small" data-act="next" hidden>⏭ Next episode</button>
       <button class="btn ghost small" data-act="cast">📺 Play on TV</button>
       <button class="btn ghost small" data-act="keep">⭳ Keep this file</button>
       <button class="btn ghost small" data-act="external">Open elsewhere</button>
@@ -63,7 +65,10 @@ export default async function player ({ params, query, container }) {
     <div id="pl-busy">${params.kind === 'torrent' ? 'Connecting to peers…' : 'Loading…'}</div></div></div>`)
   root.append(overlayTop, overlayBottom, busy)
 
-  const state = { id: null, fileIdx: null, statsTimer: null, saveTimer: null, idleTimer: null, destroyed: false }
+  const state = { id: null, fileIdx: null, statsTimer: null, saveTimer: null, idleTimer: null, destroyed: false, leaving: false }
+
+  // The on-screen furniture, as opposed to the picture behind it.
+  const CHROME = '.player-top, .player-bottom, .upnext'
 
   /* -------------------------------------------------------- progress notes */
 
@@ -135,6 +140,11 @@ export default async function player ({ params, query, container }) {
       // title, poster and stream down here — otherwise continue watching ends
       // up with an entry it can neither name nor resume.
       await seedProgress(key, start, saved)
+      // The native player has no idea what a series is; note down what it was
+      // handed so the page can queue the next episode when it comes back.
+      try {
+        sessionStorage.setItem('sh-native-playback', JSON.stringify(meta))
+      } catch { /* private mode: no auto-advance, nothing worse */ }
       nativeTv.play(new URL(src, location.origin).toString(), meta.title || 'StreamHouse', start, String(key))
       handedToNative = true
     } else {
@@ -221,6 +231,10 @@ export default async function player ({ params, query, container }) {
       if (!video.paused) hideBusy()
     }
     root.querySelector('#pl-cur').textContent = clock(video.currentTime)
+    if (upNext && !upNextDismissed && Number.isFinite(video.duration) &&
+        video.duration > 120 && video.duration - video.currentTime <= 45) {
+      offerUpNext()
+    }
     const played = video.duration ? video.currentTime / video.duration : 0
     overlayBottom.querySelector('.played').style.width = `${played * 100}%`
     overlayBottom.querySelector('.knob').style.left = `${played * 100}%`
@@ -231,9 +245,89 @@ export default async function player ({ params, query, container }) {
   })
 
   video.addEventListener('ended', async () => {
+    if (upNext) return playNext({ finished: true })
     await saveProgress(true)
     history.back()
   })
+
+  /* ------------------------------------------------------------- up next */
+
+  // What follows this episode, once an add-on has told us. Everything here is
+  // best-effort: a series with no next episode, or no add-on that knows the
+  // series, simply leaves the button and the panel out.
+  let upNext = null
+  let upNextDismissed = false
+  const nextButton = overlayTop.querySelector('[data-act="next"]')
+
+  if (meta.type === 'series') {
+    nextEpisode(meta).then(found => {
+      if (!found || state.destroyed) return
+      upNext = found
+      nextButton.hidden = false
+      nextButton.textContent = `⏭ Next: ${found.label}`
+    }).catch(() => { /* nothing queued up, and that is fine */ })
+  }
+
+  const panel = h('<div class="upnext" hidden></div>')
+  root.append(panel)
+  let countdown = null
+
+  function hideUpNext () {
+    clearInterval(countdown)
+    countdown = null
+    panel.hidden = true
+    panel.innerHTML = ''
+  }
+
+  // Offered near the end, and counted down so a series keeps playing on its
+  // own — with a way out that is easy to hit from a sofa.
+  function offerUpNext () {
+    if (!upNext || countdown || state.leaving || !panel.hidden) return
+    let left = 15
+    panel.innerHTML = `
+      <div class="tiny muted">Up next</div>
+      <div class="upnext-title">${esc(upNext.label)} · ${esc(upNext.title)}</div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary small" data-act="play-next">▶ Play now (<span id="pl-count">${left}</span>)</button>
+        <button class="btn small" data-act="cancel-next">Not now</button>
+      </div>`
+    panel.hidden = false
+    if (document.documentElement.classList.contains('tv')) {
+      panel.querySelector('[data-act="play-next"]').focus({ preventScroll: true })
+    }
+    countdown = setInterval(() => {
+      left -= 1
+      const counter = panel.querySelector('#pl-count')
+      if (counter) counter.textContent = String(left)
+      if (left <= 0) playNext({ finished: true })
+    }, 1000)
+  }
+
+  panel.addEventListener('click', event => {
+    const act = event.target.closest('[data-act]')?.dataset.act
+    if (act === 'play-next') playNext({ finished: true })
+    if (act === 'cancel-next') {
+      hideUpNext()
+      upNextDismissed = true
+    }
+  })
+
+  async function playNext ({ finished = false } = {}) {
+    if (!upNext || state.leaving) return
+    state.leaving = true
+    hideUpNext()
+    busy.hidden = false
+    const label = root.querySelector('#pl-busy')
+    if (label) label.textContent = `Finding a stream for ${upNext.label}…`
+    try {
+      await saveProgress(finished)
+      location.hash = await episodeHref(upNext, meta)
+    } catch (err) {
+      state.leaving = false
+      busy.hidden = true
+      toast(err.message, 'err')
+    }
+  }
 
   /* -------------------------------------------------------------- saving */
 
@@ -349,6 +443,7 @@ export default async function player ({ params, query, container }) {
         title: meta.title || root.querySelector('#pl-title').textContent
       })
     }
+    if (act === 'next') return playNext()
     if (act === 'keep') {
       if (kind !== 'torrent') return toast('Only torrent streams can be kept', 'err')
       try {
@@ -366,6 +461,12 @@ export default async function player ({ params, query, container }) {
 
   const onKey = event => {
     if (event.target.matches('input, select, textarea')) return
+    // A remote press is the only "the viewer is still there" signal a TV gives,
+    // so it brings the controls back exactly as moving a mouse does.
+    wake()
+    // TV mode steps through the on-screen controls with the D-pad; when it has
+    // used the key for that, it is not also a seek.
+    if (event.defaultPrevented) return
     switch (event.key) {
       case ' ': case 'k':
         event.preventDefault()
@@ -389,15 +490,32 @@ export default async function player ({ params, query, container }) {
   }
   window.addEventListener('keydown', onKey)
 
-  // Hide the chrome when the mouse rests.
-  const wake = () => {
+  // Hide the chrome when nothing is happening — a rested mouse, or a remote
+  // nobody has touched. On a TV the controls stay up longer: there is no
+  // pointer to bring them straight back.
+  function wake () {
+    const tv = document.documentElement.classList.contains('tv')
+    const wasIdle = root.classList.contains('idle')
     root.classList.remove('idle')
+    // Coming back from idle with the D-pad, focus lands on play/pause rather
+    // than wherever it was left, which may now be off screen.
+    if (tv && wasIdle && !document.activeElement?.closest(CHROME)) {
+      overlayBottom.querySelector('[data-act="playpause"]').focus({ preventScroll: true })
+    }
     clearTimeout(state.idleTimer)
     state.idleTimer = setTimeout(() => {
-      if (!video.paused) root.classList.add('idle')
-    }, 2800)
+      if (video.paused) return
+      if (!panel.hidden) return                          // still deciding on the next episode
+      if (document.querySelector('.modal-backdrop')) return
+      root.classList.add('idle')
+      // With a remote something is always focused, so the controls have to let
+      // go of it as they fade — otherwise focus sits on a button nobody can
+      // see, and the next press moves it somewhere invisible as well.
+      if (document.activeElement?.closest(CHROME)) document.activeElement.blur()
+    }, tv ? 5000 : 2800)
   }
   root.addEventListener('mousemove', wake)
+  root.addEventListener('focusin', wake)
   wake()
 
   return {
@@ -405,6 +523,7 @@ export default async function player ({ params, query, container }) {
       state.destroyed = true
       clearInterval(state.statsTimer)
       clearInterval(state.saveTimer)
+      clearInterval(countdown)
       clearTimeout(state.idleTimer)
       window.removeEventListener('keydown', onKey)
       await saveProgress()

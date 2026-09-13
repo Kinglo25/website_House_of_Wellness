@@ -10,6 +10,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.streamhouse.tv.databinding.ActivityMainBinding
@@ -24,6 +25,18 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var serverUrl: String? = null
+
+    // Playback ends in [PlayerActivity]; when it ends on "play the next one",
+    // the web page is the thing that knows what that is.
+    private val playback = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.data?.getBooleanExtra(PlayerActivity.RESULT_PLAY_NEXT, false) != true) return@registerForActivityResult
+        binding.webView.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('streamhouse-playback-ended'))",
+            null
+        )
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -98,7 +111,7 @@ class MainActivity : AppCompatActivity() {
     /** Called from the web page through the JavaScript bridge. */
     fun startPlayback(url: String, title: String, startSeconds: Double, progressKey: String) {
         runOnUiThread {
-            startActivity(
+            playback.launch(
                 Intent(this, PlayerActivity::class.java)
                     .putExtra(PlayerActivity.EXTRA_URL, url)
                     .putExtra(PlayerActivity.EXTRA_TITLE, title)

@@ -160,7 +160,8 @@ app instead — sideloaded from an APK exactly like SmartTube:
 3. Open it, and press OK on your computer in the list it finds.
 
 It plays video through ExoPlayer rather than a WebView, so the MKV / H.265 / AC3
-files torrents actually contain play properly. See
+files torrents actually contain play properly. An episode that finishes goes on to the
+next one by itself, and ⏭ on the remote skips to it early. See
 [`android/README.md`](android/README.md) for the details.
 
 ### 1. The TV's own web browser (Samsung, LG and other smart TVs)
@@ -176,8 +177,15 @@ The remote drives it:
 | Back / Return | previous screen — including Samsung's and LG's own back keycodes |
 | ◀◀ ▶ ❚❚ ▶▶ | rewind, play, pause, forward, while watching |
 
-In the player, left/right seek; volume stays with the TV's own volume keys, where it
-belongs. You can force the mode either way in **Settings → Ten-foot mode**, or with
+The highlight starts on the first poster rather than in the search box, and coming back
+from a title puts it on the tile you opened, so a row does not have to be walked twice.
+
+In the player the controls fade out while you watch and the next press of any key brings
+them back — with the highlight on play/pause, ready for OK. With the controls up, the
+D-pad steps along them; with them down, left/right seek and OK is play/pause. Volume
+stays with the TV's own volume keys, where it belongs.
+
+You can force ten-foot mode either way in **Settings → Ten-foot mode**, or with
 `?tv=1` / `?tv=0` on the URL.
 
 ### 2. Cast to the TV
@@ -222,6 +230,19 @@ straight back into the file it was playing, at the second it stopped — not to 
 page. If the stream it came from has since gone (a cached stream cleaned up, a source that
 dried up), the player offers **Pick another stream**: choose a new one and it carries on
 from the same position. Titles watched to the end drop off the list by themselves.
+
+### One episode after another
+
+Watching an episode of a series, the player works out what comes next and offers it:
+**⏭ Next: S1E4** in the top bar at any point, and an *Up next* card in the last 45
+seconds that counts down 15 and then starts it — **Not now** leaves it alone for the rest
+of the episode. Playing an episode to the end goes straight on to the following one, over
+a season boundary as readily as within one, picking the next stream the same way the
+title page does: best first for your quality profile. Specials (season 0) stay out of the
+running order unless that is all the series has.
+
+The Android TV app does the same thing, from the other side: the native player hands back
+to the page when an episode ends, or when ⏭ is pressed, and the page starts the next one.
 
 Browsers only decode some formats (MP4/WebM reliably; MKV and HEVC often not). If a file
 will not play, hit **Open elsewhere** — it copies a local URL you can paste straight into

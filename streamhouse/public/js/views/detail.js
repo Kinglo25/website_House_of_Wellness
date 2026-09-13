@@ -2,6 +2,7 @@ import { api } from '../api.js'
 import { h, esc, toast, bytes, confirmDialog, posterUrl } from '../util.js'
 import { errorBox, skeletonStrip } from '../components.js'
 import { castButton } from '../cast.js'
+import { playerHref } from '../playback.js'
 
 // Title page: metadata, episode picker for series, and the list of streams the
 // add-ons return — each one playable in the browser or downloadable to disk.
@@ -274,17 +275,8 @@ function streamRow (stream, { type, meta, state }) {
     button.disabled = true
     button.textContent = 'Starting…'
     try {
-      if (stream.infoHash) {
-        const record = await api.addTorrent({
-          infoHash: stream.infoHash,
-          sources: stream.sources || [],
-          fileIdx: stream.fileIdx ?? null,
-          mode: 'stream',
-          meta: playbackMeta
-        })
-        location.hash = `#/player/torrent/${record.id}?fileIdx=${stream.fileIdx ?? ''}&meta=${encodeURIComponent(JSON.stringify(playbackMeta))}`
-      } else if (stream.url) {
-        location.hash = `#/player/direct/x?src=${encodeURIComponent(stream.url)}&meta=${encodeURIComponent(JSON.stringify(playbackMeta))}`
+      if (stream.infoHash || stream.url) {
+        location.hash = await playerHref(stream, playbackMeta)
       } else if (stream.externalUrl) {
         window.open(stream.externalUrl, '_blank', 'noreferrer')
       } else {

@@ -1,6 +1,8 @@
 package com.streamhouse.tv
 
+import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
@@ -32,6 +34,9 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_START_MS = "startMs"
         const val EXTRA_PROGRESS_KEY = "progressKey"
         const val EXTRA_SERVER = "server"
+
+        /** Set on the result when the web page should queue up what follows. */
+        const val RESULT_PLAY_NEXT = "playNext"
     }
 
     private lateinit var binding: ActivityPlayerBinding
@@ -81,12 +86,30 @@ class PlayerActivity : AppCompatActivity() {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 binding.buffering.visibility =
                     if (playbackState == Player.STATE_BUFFERING) View.VISIBLE else View.GONE
-                if (playbackState == Player.STATE_ENDED) finish()
+                if (playbackState == Player.STATE_ENDED) finishAndPlayNext()
             }
         })
 
         exoPlayer.playWhenReady = true
         exoPlayer.prepare()
+    }
+
+    /**
+     * Hand back to the web page with "carry on" attached: it knows whether this
+     * was an episode and what comes after it. A film simply stops here.
+     */
+    private fun finishAndPlayNext() {
+        setResult(RESULT_OK, Intent().putExtra(RESULT_PLAY_NEXT, true))
+        finish()
+    }
+
+    /** The remote's skip-forward key means the next episode, not the next file. */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_NEXT) {
+            finishAndPlayNext()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     override fun onPause() {
