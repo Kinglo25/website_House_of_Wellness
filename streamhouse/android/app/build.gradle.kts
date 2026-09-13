@@ -3,6 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// CI stamps every build with its run number, which is what the app compares
+// against to know it is out of date. A local build stays at 1 and never looks
+// newer than whatever is installed from a release.
+val buildVersionCode = (System.getenv("SH_VERSION_CODE") ?: "1").toIntOrNull() ?: 1
+val buildVersionName = System.getenv("SH_VERSION_NAME") ?: "local build"
+
 android {
     namespace = "com.streamhouse.tv"
     compileSdk = 34
@@ -11,8 +17,8 @@ android {
         applicationId = "com.streamhouse.tv"
         minSdk = 21          // Android TV 5.0 and up
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = buildVersionCode
+        versionName = buildVersionName
     }
 
     buildTypes {

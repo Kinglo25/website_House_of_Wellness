@@ -231,7 +231,7 @@ export default async function player ({ params, query, container }) {
       if (!video.paused) hideBusy()
     }
     root.querySelector('#pl-cur').textContent = clock(video.currentTime)
-    if (upNext && !upNextDismissed && Number.isFinite(video.duration) &&
+    if (upNext && autoPlayNext && !upNextDismissed && Number.isFinite(video.duration) &&
         video.duration > 120 && video.duration - video.currentTime <= 45) {
       offerUpNext()
     }
@@ -245,7 +245,7 @@ export default async function player ({ params, query, container }) {
   })
 
   video.addEventListener('ended', async () => {
-    if (upNext) return playNext({ finished: true })
+    if (upNext && autoPlayNext) return playNext({ finished: true })
     await saveProgress(true)
     history.back()
   })
@@ -258,6 +258,11 @@ export default async function player ({ params, query, container }) {
   let upNext = null
   let upNextDismissed = false
   const nextButton = overlayTop.querySelector('[data-act="next"]')
+
+  // Carrying on by itself is a setting; offering the next episode at all is not,
+  // so the button appears either way.
+  let autoPlayNext = true
+  api.getConfig().then(config => { autoPlayNext = config.autoPlayNextEpisode !== false }).catch(() => {})
 
   if (meta.type === 'series') {
     nextEpisode(meta).then(found => {

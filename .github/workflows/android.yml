@@ -29,12 +29,39 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # The run number is the app's version: it only ever goes up, and it is
+      # what an installed app compares itself against to spot a newer build.
+      - name: Work out the version
+        id: version
+        run: |
+          echo "code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "name=build ${GITHUB_RUN_NUMBER} (${GITHUB_SHA:0:7})" >> "$GITHUB_OUTPUT"
+
       - name: Build APK
         working-directory: streamhouse/android
+        env:
+          SH_VERSION_CODE: ${{ steps.version.outputs.code }}
+          SH_VERSION_NAME: ${{ steps.version.outputs.name }}
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Collect the APK
         run: cp streamhouse/android/app/build/outputs/apk/release/app-release.apk streamhouse-tv.apk
+
+      # What a running app reads to decide whether it is behind. It is a release
+      # asset rather than the release notes so nothing has to be parsed out of
+      # prose.
+      - name: Describe the build for the updater
+        run: |
+          cat > tv-version.json <<JSON
+          {
+            "versionCode": ${{ steps.version.outputs.code }},
+            "versionName": "${{ steps.version.outputs.name }}",
+            "commit": "${GITHUB_SHA:0:7}",
+            "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "apk": "streamhouse-tv.apk"
+          }
+          JSON
+          cat tv-version.json
 
       - name: Upload as a build artifact
         uses: actions/upload-artifact@v4
@@ -50,10 +77,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete tv-latest --yes --cleanup-tag || true
-          gh release create tv-latest streamhouse-tv.apk \
+          gh release create tv-latest streamhouse-tv.apk tv-version.json \
             --prerelease \
             --title "StreamHouse TV (latest build)" \
-            --notes "Android TV app built from ${GITHUB_SHA:0:7}.
+            --notes "Android TV app ${{ steps.version.outputs.name }}.
+
+          Installed copies offer this build the next time they start, so this
+          only has to be fetched by hand for a first install.
 
           Install it on the TV with the Downloader app using the direct link to
           \`streamhouse-tv.apk\` on this release, or with

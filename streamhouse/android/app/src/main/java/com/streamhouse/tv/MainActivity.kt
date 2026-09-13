@@ -3,6 +3,7 @@ package com.streamhouse.tv
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import android.view.KeyEvent
 import android.view.View
 import android.webkit.WebChromeClient
@@ -25,6 +26,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var serverUrl: String? = null
+    private var updateChecked = false
 
     // Playback ends in [PlayerActivity]; when it ends on "play the next one",
     // the web page is the thing that knows what that is.
@@ -59,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         binding.webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 binding.progress.visibility = View.GONE
+                checkForUpdate()
             }
 
             override fun onReceivedError(
@@ -85,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (saved != serverUrl) {
             serverUrl = saved
+            updateChecked = false
             load()
         }
     }
@@ -96,6 +100,48 @@ class MainActivity : AppCompatActivity() {
         // ?tv=1 puts the web interface straight into ten-foot mode.
         binding.webView.loadUrl("$url/?tv=1")
         binding.webView.requestFocus()
+    }
+
+    /* ------------------------------------------------------------- updating */
+
+    /**
+     * Sideloaded apps have nothing keeping them current, so once the interface
+     * is up the app asks the server whether a newer build has been published
+     * and offers it. Once per start, and never twice for a build that has
+     * already been turned down.
+     */
+    private fun checkForUpdate() {
+        if (updateChecked) return
+        updateChecked = true
+        val server = serverUrl ?: return
+        Thread {
+            val release = Updater.check(this, server) ?: return@Thread
+            if (release.versionCode == Prefs.skippedUpdate(this)) return@Thread
+            runOnUiThread { if (!isFinishing) offerUpdate(server, release) }
+        }.start()
+    }
+
+    private fun offerUpdate(server: String, release: Updater.Release) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.update_title)
+            .setMessage(getString(R.string.update_message, release.versionName))
+            .setPositiveButton(R.string.update_now) { _, _ -> downloadAndInstall(server) }
+            .setNegativeButton(R.string.update_later) { _, _ ->
+                Prefs.setSkippedUpdate(this, release.versionCode)
+            }
+            .show()
+    }
+
+    private fun downloadAndInstall(server: String) {
+        Toast.makeText(this, R.string.update_downloading, Toast.LENGTH_LONG).show()
+        Thread {
+            val apk = Updater.download(this, server)
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                if (apk == null) Toast.makeText(this, R.string.update_failed, Toast.LENGTH_LONG).show()
+                else Updater.install(this, apk)
+            }
+        }.start()
     }
 
     private fun showUnreachable() {

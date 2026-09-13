@@ -35,6 +35,34 @@ adb install -r streamhouse-tv.apk
 
 The app then appears on the Android TV home row with the other apps.
 
+## Keeping it up to date
+
+Only the first install is by hand. After that the app updates itself: on every
+start it asks your StreamHouse server whether a newer build has been published,
+and offers it.
+
+- **Update now** downloads the APK and hands it to Android, which asks you to
+  confirm. The first time, Android TV will want the app allowed to install other
+  apps — it opens that setting for you; say yes and choose Update again.
+- **Not now** keeps quiet about that particular build until the next one.
+
+The download comes through your own StreamHouse server rather than straight from
+GitHub, so the TV needs nothing but the local network — which also spares older
+TV boxes a TLS handshake they often cannot manage. If the server is offline or
+GitHub is unreachable, the check fails quietly and the app carries on.
+
+**Most changes need no update at all.** The app is a shell around the web
+interface it loads from your computer, so anything that changes in StreamHouse
+itself arrives the moment you update the server. Only changes inside this folder
+— the player, the remote handling, the updater — need a new APK.
+
+Each CI build is stamped with the run number as its version code, which is what
+an installed copy compares itself against. A locally built APK stays at version
+1 so it never pretends to be newer than a release.
+
+Point the check somewhere else — your own fork's release — with
+**tvReleaseApi** in the server's `config.json`.
+
 ## First run
 
 1. Start StreamHouse on your computer and turn on **Settings → TV → Allow other

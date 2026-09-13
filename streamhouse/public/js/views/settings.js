@@ -163,6 +163,16 @@ export default async function settings ({ container }) {
   castPanel.querySelector('#cast-scan').addEventListener('click', () => castPicker({ title: 'StreamHouse' }))
   grid.append(castPanel)
 
+  /* ------------------------------------------------------------- playback */
+
+  grid.append(h('<h2 style="margin-top:22px">Playing</h2>'))
+  grid.append(toggleSetting({
+    key: 'autoPlayNextEpisode',
+    title: 'Play the next episode',
+    hint: 'offer it near the end of an episode and carry on by itself',
+    value: config.autoPlayNextEpisode
+  }))
+
   /* ------------------------------------------------------- stream ranking */
 
   grid.append(h('<h2 style="margin-top:22px">Streams</h2>'))

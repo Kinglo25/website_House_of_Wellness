@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The downloaded APK, which Android's installer reads through the provider. -->
+<paths>
+    <cache-path name="updates" path="." />
+    <external-cache-path name="external-updates" path="." />
+</paths>

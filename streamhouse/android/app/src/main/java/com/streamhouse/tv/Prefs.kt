@@ -6,6 +6,7 @@ import android.content.Context
 object Prefs {
     private const val FILE = "streamhouse"
     private const val KEY_SERVER = "server_url"
+    private const val KEY_SKIPPED = "skipped_update"
 
     fun serverUrl(context: Context): String? =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -15,6 +16,17 @@ object Prefs {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_SERVER, url)
+            .apply()
+    }
+
+    /** A build the viewer said "not now" to, so it is not asked about twice. */
+    fun skippedUpdate(context: Context): Int =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_SKIPPED, 0)
+
+    fun setSkippedUpdate(context: Context, versionCode: Int) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_SKIPPED, versionCode)
             .apply()
     }
 

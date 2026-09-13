@@ -18,6 +18,13 @@
     <string name="nothing_to_play">Nothing to play</string>
     <string name="playback_failed">This file would not play (%1$s)</string>
 
+    <string name="update_title">Update StreamHouse</string>
+    <string name="update_message">A newer version of the TV app is ready: %1$s.\n\nIt takes a few seconds and you will be asked to confirm the install.</string>
+    <string name="update_now">Update now</string>
+    <string name="update_later">Not now</string>
+    <string name="update_downloading">Downloading the update…</string>
+    <string name="update_failed">The update could not be downloaded. It will be offered again next time.</string>
+
     <string name="exit_title">Leave StreamHouse?</string>
     <string name="exit_yes">Exit</string>
     <string name="exit_no">Stay</string>

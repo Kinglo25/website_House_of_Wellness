@@ -30,7 +30,11 @@ const DEFAULTS = {
   autoPlayNextEpisode: true,
 
   // ui
-  theme: 'midnight'
+  theme: 'midnight',
+
+  // where the Android TV app looks for a newer build of itself; point it at
+  // your own fork's rolling release if you build your own APK
+  tvReleaseApi: 'https://api.github.com/repos/Kinglo25/website_House_of_Wellness/releases/tags/tv-latest'
 }
 
 class Config {

@@ -9,6 +9,7 @@ import { JsonStore } from '../store.js'
 import { mimeFor, isBrowserPlayable, srtToVtt } from '../mime.js'
 import { localAddresses, lanUrl, isLanReachable } from '../network.js'
 import * as cast from '../cast.js'
+import * as tvapp from '../tvapp.js'
 
 const library = new JsonStore('library', [])
 const progress = new JsonStore('progress', {})
@@ -318,6 +319,26 @@ router.post('/network/expose', wrap(async (req, res) => {
       rebind(host, config.get().port).catch(err => console.error('[network] rebind failed:', err.message))
     }, 50).unref?.()
   })
+}))
+
+/* ----------------------------------------------------------- the TV app */
+
+// The Android TV app asks these two: what the newest build is, and then for
+// the APK itself. Nothing else uses them.
+router.get('/tv/update', wrap(async (req, res) => {
+  const installed = Number(req.query.installed) || 0
+  try {
+    const latest = await tvapp.latest({ refresh: req.query.refresh === '1' })
+    res.json({ ...latest, installed, available: latest.versionCode > installed, apkUrl: '/api/tv/apk' })
+  } catch (err) {
+    // No internet, a rate limit, a release that predates this: none of it is
+    // worth an error on the TV, which simply carries on with what it has.
+    res.json({ available: false, installed, error: err.message })
+  }
+}))
+
+router.get('/tv/apk', wrap(async (req, res) => {
+  await tvapp.pipeApk(res)
 }))
 
 /* ---------------------------------------------------------------- casting */

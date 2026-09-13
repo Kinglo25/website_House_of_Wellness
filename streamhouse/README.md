@@ -161,8 +161,13 @@ app instead — sideloaded from an APK exactly like SmartTube:
 
 It plays video through ExoPlayer rather than a WebView, so the MKV / H.265 / AC3
 files torrents actually contain play properly. An episode that finishes goes on to the
-next one by itself, and ⏭ on the remote skips to it early. See
-[`android/README.md`](android/README.md) for the details.
+next one by itself, and ⏭ on the remote skips to it early.
+
+Only that first install is by hand: the app asks your StreamHouse server for a newer
+build each time it starts and offers to install it, downloading through the server so
+the TV needs nothing but the local network. And because the app is a shell around the
+web interface it loads from your computer, most changes arrive just by updating
+StreamHouse itself — no new APK. See [`android/README.md`](android/README.md).
 
 ### 1. The TV's own web browser (Samsung, LG and other smart TVs)
 
@@ -309,6 +314,8 @@ Useful if you want to drive it from a script or another app:
 | GET | `/api/streams/:type/:id` | add-on streams, parsed and ranked best-first |
 | GET/POST | `/api/config` | settings |
 | GET | `/api/profiles` | the stream profiles Settings offers |
+| GET | `/api/tv/update` | what the newest Android TV build is, `?installed=<code>` |
+| GET | `/api/tv/apk` | that build, passed through from the release |
 | GET | `/api/network` | LAN addresses and whether other devices can reach it |
 | POST | `/api/network/expose` | `{enabled}` — switch between local-only and network |
 | GET/POST | `/api/cast/devices` | list/scan renderers, or add one by address |
