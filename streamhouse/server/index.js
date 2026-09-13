@@ -28,6 +28,14 @@ app.use((req, res, next) => {
 })
 
 app.use('/api', api)
+
+// Serve the manifest with its proper type; browsers ignore it otherwise, and
+// "Add to Home Screen" then falls back to a plain bookmark.
+app.get('/manifest.webmanifest', (req, res) => {
+  res.type('application/manifest+json')
+  res.sendFile(path.join(publicDir, 'manifest.webmanifest'))
+})
+
 app.use(express.static(publicDir, { extensions: ['html'] }))
 
 // Client-side routing: anything that is not an API call renders the app shell.

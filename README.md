@@ -15,6 +15,9 @@ D-pad-driven layout), cast to the TV over Google Cast or DLNA, or the
 **[Android TV app](streamhouse/android)** — sideload the APK from the
 `tv-latest` release.
 
+On a phone it goes on the home screen with its own icon and drives the TV from
+the sofa — see [On your phone](streamhouse#on-your-phone).
+
 ```bash
 cd streamhouse && npm install && npm start     # http://127.0.0.1:11471
 ```

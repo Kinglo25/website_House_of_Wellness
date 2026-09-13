@@ -89,6 +89,25 @@ The Downloads page gives you what a torrent client gives you:
 Downloads survive a restart: the app keeps each torrent's metadata, re-checks the data
 already on disk and picks up where it left off — even with no peers around.
 
+## On your phone
+
+There is nothing to install on the phone from an app store: StreamHouse runs on the
+computer, and the phone opens it in its browser. Turn on **Settings → TV → Allow other
+devices** (or start with `HOST=0.0.0.0 npm start`), then open the network address the
+banner prints — `http://192.168.1.34:11471` — on the phone, over the same Wi-Fi.
+
+Add it to the home screen and it behaves like an app: its own name and icon rather
+than a screenshot of the page.
+
+- **iPhone / iPad** — Safari → Share → *Add to Home Screen*. Opens full screen.
+- **Android** — Chrome → ⋮ → *Add to Home screen* (or *Install app*). Chrome only
+  offers the full standalone install over HTTPS, so on a plain LAN address you get a
+  home-screen icon that opens in Chrome. Same icon, same name, one tap.
+
+From there the phone is a perfectly good remote for the TV: browse on the phone, press
+**📺 TV** on a stream, pick the TV, and it plays there while the phone keeps the
+transport controls. See below.
+
 ## Watching on your TV
 
 Three ways, depending on what your TV can do. All of them need the app reachable
