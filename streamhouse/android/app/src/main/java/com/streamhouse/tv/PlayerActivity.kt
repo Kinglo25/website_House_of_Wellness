@@ -12,6 +12,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.streamhouse.tv.databinding.ActivityPlayerBinding
 import org.json.JSONObject
 import java.io.OutputStreamWriter
@@ -58,6 +59,15 @@ class PlayerActivity : AppCompatActivity() {
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         binding.title.text = title
 
+        // The title belongs to the controls: both up when the remote is used,
+        // both gone a few seconds later. On its own it was simply painted over
+        // the picture for the whole film.
+        binding.playerView.setControllerVisibilityListener(
+            PlayerView.ControllerVisibilityListener { visibility ->
+                binding.title.visibility = visibility
+            }
+        )
+
         val exoPlayer = ExoPlayer.Builder(this).build()
         player = exoPlayer
         binding.playerView.player = exoPlayer
@@ -92,6 +102,7 @@ class PlayerActivity : AppCompatActivity() {
 
         exoPlayer.playWhenReady = true
         exoPlayer.prepare()
+        binding.playerView.showController()
     }
 
     /**
