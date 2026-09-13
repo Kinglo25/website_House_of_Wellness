@@ -6,8 +6,16 @@ plugins {
 // CI stamps every build with its run number, which is what the app compares
 // against to know it is out of date. A local build stays at 1 and never looks
 // newer than whatever is installed from a release.
-val buildVersionCode = (System.getenv("SH_VERSION_CODE") ?: "1").toIntOrNull() ?: 1
-val buildVersionName = System.getenv("SH_VERSION_NAME") ?: "local build"
+fun env(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
+
+val buildVersionCode = (env("SH_VERSION_CODE") ?: "1").toIntOrNull() ?: 1
+val buildVersionName = env("SH_VERSION_NAME") ?: "local build"
+
+// Android installs an update only over an app signed with the same key. The
+// debug key is generated per machine, so builds from different CI runs cannot
+// replace each other — which is the whole point of updating in place. When the
+// repository has a signing key, every build is signed with that one instead.
+val releaseKeystore = env("SH_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
 
 android {
     namespace = "com.streamhouse.tv"
@@ -21,13 +29,24 @@ android {
         versionName = buildVersionName
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("streamhouse") {
+                storeFile = releaseKeystore
+                storePassword = env("SH_KEYSTORE_PASSWORD")
+                keyAlias = env("SH_KEY_ALIAS") ?: "streamhouse"
+                keyPassword = env("SH_KEY_PASSWORD") ?: env("SH_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so a plain `assembleRelease` produces an
-            // APK that installs. Replace with your own keystore to publish.
-            signingConfig = signingConfigs.getByName("debug")
+            // The debug key keeps a plain local `assembleRelease` installable;
+            // a build with a real key behind it can be updated over.
+            signingConfig = signingConfigs.findByName("streamhouse") ?: signingConfigs.getByName("debug")
         }
     }
 
