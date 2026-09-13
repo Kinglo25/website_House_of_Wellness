@@ -59,7 +59,8 @@ export default async function player ({ params, query, container }) {
       </div>
     </div>`)
 
-  const busy = h('<div class="buffering"><div><div class="spinner"></div><div id="pl-busy">Connecting to peers…</div></div></div>')
+  const busy = h(`<div class="buffering"><div><div class="spinner"></div>
+    <div id="pl-busy">${params.kind === 'torrent' ? 'Connecting to peers…' : 'Loading…'}</div></div></div>`)
   root.append(overlayTop, overlayBottom, busy)
 
   const state = { id: null, fileIdx: null, statsTimer: null, saveTimer: null, idleTimer: null, destroyed: false }
@@ -162,6 +163,12 @@ export default async function player ({ params, query, container }) {
 
   const progressKey = meta.videoId || meta.imdbId || state.id || src
   const resumeAt = Number(query.t) || 0
+  let lastTime = -1
+
+  const showBusy = () => { busy.hidden = false }
+  // Once the file has failed to decode, `busy` holds that message rather than
+  // the spinner, and nothing should take it away.
+  const hideBusy = () => { if (!video.error) busy.hidden = true }
 
   video.volume = Number(localStorage.getItem('sh-volume') ?? 1)
   overlayBottom.querySelector('.vol').value = video.volume
@@ -179,13 +186,15 @@ export default async function player ({ params, query, container }) {
     if (start) video.currentTime = start
     video.play().catch(() => {
       // Autoplay can be blocked; the play button still works.
-      busy.hidden = true
+      hideBusy()
     })
   })
 
-  video.addEventListener('waiting', () => { busy.hidden = false })
-  video.addEventListener('playing', () => { busy.hidden = true })
-  video.addEventListener('canplay', () => { busy.hidden = true })
+  video.addEventListener('waiting', showBusy)
+  video.addEventListener('playing', hideBusy)
+  video.addEventListener('canplay', hideBusy)
+  // A seek can fire `waiting` without ever stalling; `seeked` is the answer.
+  video.addEventListener('seeked', hideBusy)
   video.addEventListener('play', () => { overlayBottom.querySelector('[data-act="playpause"]').textContent = '⏸' })
   video.addEventListener('pause', () => { overlayBottom.querySelector('[data-act="playpause"]').textContent = '▶' })
 
@@ -205,6 +214,12 @@ export default async function player ({ params, query, container }) {
   })
 
   video.addEventListener('timeupdate', () => {
+    // Whatever the events claimed, a clock that is moving is a stream that is
+    // playing — so the spinner never outstays the stall it was reporting.
+    if (video.currentTime !== lastTime) {
+      lastTime = video.currentTime
+      if (!video.paused) hideBusy()
+    }
     root.querySelector('#pl-cur').textContent = clock(video.currentTime)
     const played = video.duration ? video.currentTime / video.duration : 0
     overlayBottom.querySelector('.played').style.width = `${played * 100}%`
