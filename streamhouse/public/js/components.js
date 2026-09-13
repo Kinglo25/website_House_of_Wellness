@@ -1,7 +1,9 @@
 import { h, esc, posterUrl, percent } from './util.js'
 
 // One poster tile. Used by the home shelves, discover grid, search and library.
-export function metaCard (meta, { progress = 0, ribbon = '', sub = '' } = {}) {
+// `open` overrides where the tile goes: continue-watching tiles resume the file
+// instead of opening the title page.
+export function metaCard (meta, { progress = 0, ribbon = '', sub = '', open = '' } = {}) {
   const title = meta.name || meta.title || 'Untitled'
   const subtitle = sub || [meta.releaseInfo || meta.year, meta.type].filter(Boolean).join(' · ')
   const card = h(`
@@ -20,17 +22,54 @@ export function metaCard (meta, { progress = 0, ribbon = '', sub = '' } = {}) {
     img.src = posterUrl({ name: title })
   }, { once: true })
 
-  const open = () => {
-    location.hash = `#/detail/${encodeURIComponent(meta.type || 'movie')}/${encodeURIComponent(meta.id)}`
+  const go = () => {
+    location.hash = open || detailHref(meta)
   }
-  card.addEventListener('click', open)
+  card.addEventListener('click', go)
   card.addEventListener('keydown', event => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      open()
+      go()
     }
   })
   return card
+}
+
+export function detailHref (meta) {
+  return `#/detail/${encodeURIComponent(meta?.type || 'movie')}/${encodeURIComponent(meta?.id ?? '')}`
+}
+
+// Where a saved position should take you: back into the exact file that was
+// playing, at the second it stopped. Entries saved before the player knew how
+// to record that — or by a cast session — fall back to the title page, where a
+// stream can be picked again.
+export function resumeHref (entry) {
+  const { playback, ...meta } = entry.meta || {}
+  const time = Math.max(0, Math.floor(Number(entry.time) || 0))
+  const query = new URLSearchParams({ t: String(time), meta: JSON.stringify(meta) })
+
+  if (playback?.infoHash) {
+    if (playback.fileIdx !== null && playback.fileIdx !== undefined) query.set('fileIdx', String(playback.fileIdx))
+    return `#/player/torrent/${encodeURIComponent(playback.infoHash)}?${query}`
+  }
+  if (playback?.url) {
+    query.set('src', playback.url)
+    return `#/player/direct/x?${query}`
+  }
+  return detailHref(meta.id ? meta : { ...meta, id: entry.id })
+}
+
+// A "Continue watching" tile: how far in it is, how much is left, and a click
+// that resumes rather than starting the title over.
+export function continueCard (entry) {
+  const meta = entry.meta || { name: entry.id, id: entry.id, type: 'movie' }
+  const ratio = entry.duration > 0 ? entry.time / entry.duration : 0
+  const left = entry.duration > 0 ? Math.round((entry.duration - entry.time) / 60) : 0
+  return metaCard(meta, {
+    progress: ratio,
+    sub: left > 0 ? `${left} min left` : 'Resume',
+    open: resumeHref(entry)
+  })
 }
 
 export function shelf ({ title, source = '', moreHref = '' }) {

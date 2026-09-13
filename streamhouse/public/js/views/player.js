@@ -10,7 +10,20 @@ export default async function player ({ params, query, container }) {
   let meta = {}
   try {
     meta = query.meta ? JSON.parse(query.meta) : {}
-  } catch { meta = {} }
+  } catch {
+    // Older continue-watching links carried the bare progress id here rather
+    // than the metadata object, so keep them working instead of losing both
+    // the title and the position they point at.
+    meta = query.meta ? { videoId: query.meta } : {}
+  }
+  if (!meta.title && query.title) meta.title = query.title
+
+  // The title page to fall back to when the saved stream cannot be started
+  // again — its sources may have gone away since it was watched.
+  const detailId = meta.imdbId || meta.videoId || ''
+  const detailHref = detailId
+    ? `#/detail/${encodeURIComponent(meta.type || 'movie')}/${encodeURIComponent(detailId)}`
+    : ''
 
   const root = h('<div class="player-wrap"><video playsinline></video></div>')
   const video = root.querySelector('video')
@@ -51,6 +64,33 @@ export default async function player ({ params, query, container }) {
 
   const state = { id: null, fileIdx: null, statsTimer: null, saveTimer: null, idleTimer: null, destroyed: false }
 
+  /* -------------------------------------------------------- progress notes */
+
+  // What continue watching needs to rebuild the tile: what this is, and which
+  // file to reopen to carry on watching it.
+  function progressMeta (key) {
+    return {
+      ...meta,
+      name: meta.title || meta.name,
+      id: meta.imdbId || meta.videoId || key,
+      type: meta.type || 'movie',
+      playback: state.id
+        ? { infoHash: state.id, fileIdx: state.fileIdx }
+        : (src ? { url: src } : null)
+    }
+  }
+
+  // Record the entry before handing playback somewhere that only knows the id
+  // it was given — the Android TV player posts a position back and nothing else,
+  // so without this the shelf gets a nameless tile that resumes nothing.
+  async function seedProgress (key, start, saved) {
+    const duration = Number(saved?.duration) || 0
+    if (duration > 0 && start / duration > 0.93) return
+    try {
+      await api.saveProgress({ id: key, time: Number(start) || 0, duration, meta: progressMeta(key) })
+    } catch { /* progress saving is best-effort */ }
+  }
+
   /* -------------------------------------------------------------- source */
 
   // Present only when running inside the StreamHouse Android TV app.
@@ -85,12 +125,15 @@ export default async function player ({ params, query, container }) {
     // ExoPlayer handles the MKV, H.265 and AC3 files a WebView will not touch.
     if (nativeTv) {
       const key = meta.videoId || meta.imdbId || state.id || src
-      let start = Number(query.t) || 0
-      if (!start) {
-        try {
-          start = (await api.progress())[key]?.time || 0
-        } catch { /* no saved position */ }
-      }
+      let saved = null
+      try {
+        saved = (await api.progress())[key] || null
+      } catch { /* no saved position */ }
+      const start = Number(query.t) || saved?.time || 0
+      // The native player reports a bare id and position back, so write the
+      // title, poster and stream down here — otherwise continue watching ends
+      // up with an entry it can neither name nor resume.
+      await seedProgress(key, start, saved)
       nativeTv.play(new URL(src, location.origin).toString(), meta.title || 'StreamHouse', start, String(key))
       handedToNative = true
     } else {
@@ -100,7 +143,11 @@ export default async function player ({ params, query, container }) {
     busy.innerHTML = `<div style="max-width:520px;text-align:center">
       <h2>Could not start playback</h2>
       <p class="muted">${esc(err.message)}</p>
-      <button class="btn primary" onclick="history.back()">Go back</button></div>`
+      ${detailHref ? '<p class="muted tiny">The stream this was watched from may be gone. Pick another one and it will carry on from where it stopped.</p>' : ''}
+      <div class="row" style="justify-content:center;margin-top:14px">
+        <button class="btn" onclick="history.back()">Go back</button>
+        ${detailHref ? `<a class="btn primary" href="${esc(detailHref)}">Pick another stream</a>` : ''}
+      </div></div>`
     return { destroy: () => root.remove() }
   }
 
@@ -176,19 +223,21 @@ export default async function player ({ params, query, container }) {
   /* -------------------------------------------------------------- saving */
 
   async function saveProgress (finished = false) {
-    if (!video.duration) return
+    // A file the browser cannot measure yet — a torrent still filling in, or an
+    // MKV with no duration in its header — reports an infinite duration. The
+    // position is still worth keeping; only the percentage is unknown.
+    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0
+    const time = Number.isFinite(video.currentTime) ? video.currentTime : 0
+    if (!duration && !time) return
     try {
+      // Watched to the end with no duration to compare against: the server
+      // drops finished titles by ratio, so say so directly instead.
+      if (finished && !duration) return await api.clearProgress(progressKey)
       await api.saveProgress({
         id: progressKey,
-        time: finished ? video.duration : video.currentTime,
-        duration: video.duration,
-        meta: {
-          ...meta,
-          name: meta.title,
-          id: meta.videoId || meta.imdbId || progressKey,
-          type: meta.type || 'movie',
-          playback: state.id ? { infoHash: state.id, fileIdx: state.fileIdx } : null
-        }
+        time: finished ? duration : time,
+        duration,
+        meta: progressMeta(progressKey)
       })
     } catch { /* progress saving is best-effort */ }
   }
