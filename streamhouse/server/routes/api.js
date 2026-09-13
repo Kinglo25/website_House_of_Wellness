@@ -4,6 +4,7 @@ import path from 'path'
 import { config } from '../config.js'
 import { addons, clearAddonCache } from '../addons.js'
 import { engine, infoHashOf } from '../torrent.js'
+import { rankStreams, PROFILES } from '../rank.js'
 import { JsonStore } from '../store.js'
 import { mimeFor, isBrowserPlayable, srtToVtt } from '../mime.js'
 import { localAddresses, lanUrl, isLanReachable } from '../network.js'
@@ -32,6 +33,11 @@ router.post('/config', (req, res) => {
   const next = config.update(req.body)
   engine.applyLimits()
   res.json(next)
+})
+
+// The stream profiles Settings offers, described by the ranker itself.
+router.get('/profiles', (req, res) => {
+  res.json(Object.entries(PROFILES).map(([id, profile]) => ({ id, label: profile.label, hint: profile.hint })))
 })
 
 /* ------------------------------------------------------------------ addons */
@@ -74,7 +80,7 @@ router.get('/streams/:type/:id', wrap(async (req, res) => {
   const streams = await addons.streams(req.params.type, req.params.id)
   // Annotate each stream so the UI knows whether it can play it in the browser,
   // download it, or only hand it to an external player.
-  res.json(streams.map(stream => {
+  const annotated = streams.map(stream => {
     const hash = stream.infoHash || infoHashOf(stream.url || '')
     return {
       ...stream,
@@ -83,7 +89,10 @@ router.get('/streams/:type/:id', wrap(async (req, res) => {
       downloadable: Boolean(hash),
       direct: Boolean(stream.url && !hash)
     }
-  }))
+  })
+  // Then parse the release names and sort best-first for the profile in
+  // Settings, so the top row is the one worth pressing Play on.
+  res.json(rankStreams(annotated, config.get()))
 }))
 
 router.get('/subtitles/:type/:id', wrap(async (req, res) => {

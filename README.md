@@ -8,7 +8,8 @@ the house.
 A Stremio-style front end with a qBittorrent-style download manager built in.
 Browse catalogues from any Stremio add-on you install, stream while the file is
 still downloading, or keep it on disk with pause, resume, per-file selection and
-speed limits.
+speed limits. Release names are parsed and ranked against a quality profile, so
+the top stream is one the thing you are watching on can actually play.
 
 Watch it on a TV three ways: the TV's own browser (it switches to a ten-foot,
 D-pad-driven layout), cast to the TV over Google Cast or DLNA, or the

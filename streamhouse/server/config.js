@@ -19,6 +19,12 @@ const DEFAULTS = {
   autoStartDownloads: true,  // start downloading as soon as a torrent is added
   streamCacheOnly: false,    // true = delete stream-only torrents when they stop
 
+  // which stream wins when an add-on hands back thirty of them
+  streamProfile: 'balanced',  // compatible | balanced | quality
+  maxResolution: 'any',       // any | 480p | 576p | 720p | 1080p | 2160p
+  minSeeders: 0,              // 0 = accept any; below this a release sinks to the bottom
+  maxStreamSize: 0,           // GB, 0 = no limit
+
   // player
   playerVolume: 1,
   autoPlayNextEpisode: true,

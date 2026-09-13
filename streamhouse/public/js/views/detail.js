@@ -65,6 +65,12 @@ export default async function detail ({ params, container }) {
           </div>`))
         return
       }
+      // The server ranked them; say so, so the order does not look arbitrary.
+      const counted = streamsSection.querySelector('.count')
+      const rejected = streams.filter(stream => stream.rejections?.length).length
+      if (counted && streams[0]?.profile) {
+        counted.innerHTML = `${esc(state.label || meta.name)} · best first for your <a href="#/settings">${esc(streams[0].profile)}</a> profile${rejected ? ` · ${rejected} below the line` : ''}`
+      }
       const list = h('<div class="stream-list"></div>')
       streams.forEach(stream => list.append(streamRow(stream, { type, meta, state })))
       streamsSection.append(list)
@@ -99,14 +105,15 @@ function hero (meta, state) {
         ${meta.cast?.length ? `<p class="tiny muted">Cast: ${esc(meta.cast.slice(0, 5).join(', '))}</p>` : ''}
         ${meta.director?.length ? `<p class="tiny muted">Director: ${esc([].concat(meta.director).slice(0, 3).join(', '))}</p>` : ''}
         <div class="cta">
-          <button class="btn primary" data-act="play">▶ Play</button>
+          <button class="btn primary" data-act="play">▶ Play best</button>
           <button class="btn" data-act="save">＋ Add to library</button>
           ${meta.imdb_id ? `<a class="btn ghost" target="_blank" rel="noreferrer" href="https://www.imdb.com/title/${esc(meta.imdb_id)}/">IMDb</a>` : ''}
         </div>
       </div>
     </div>`)
 
-  // "Play" on the hero is a shortcut for the first stream in the list.
+  // The stream list is sorted best-first, so the hero button is a shortcut to
+  // the top row — the one the quality profile picked.
   node.querySelector('[data-act="play"]').addEventListener('click', () => {
     const first = document.querySelector('.stream-list .stream [data-act="play"]')
     if (first) first.click()
@@ -191,19 +198,42 @@ function renderEpisodes (meta, state, onPick) {
 
 /* ---------------------------------------------------------------- streams */
 
-// Add-ons put the human-readable source description in `title` (or `name`);
-// the quality tag is the first line, the rest is seeds / size / group info.
+// What the parser found, as chips. Only what it is sure about: an add-on that
+// says nothing useful gets no badges rather than a row of "unknown".
+function badges (quality) {
+  const list = []
+  if (quality.sourceLabel) list.push({ text: quality.sourceLabel, kind: quality.source === 'cam' ? 'bad' : '' })
+  if (quality.codecLabel) list.push({ text: quality.codecLabel })
+  if (quality.dynamicRange) list.push({ text: quality.dynamicRange.toUpperCase() })
+  if (quality.audioLabel) list.push({ text: `${quality.audioLabel}${quality.channels ? ` ${quality.channels}` : ''}` })
+  if (quality.proper) list.push({ text: 'PROPER', kind: 'good' })
+  if (quality.repack) list.push({ text: 'REPACK', kind: 'good' })
+  if (quality.edition) list.push({ text: quality.edition })
+  if (quality.seasonPack) list.push({ text: 'Season pack' })
+  if (quality.size) list.push({ text: bytes(quality.size) })
+  if (quality.seeders != null) list.push({ text: `${quality.seeders} seeders`, kind: quality.seeders > 0 ? 'good' : 'bad' })
+  if (quality.group) list.push({ text: quality.group, kind: 'ghost' })
+  return list
+}
+
+// The server has already parsed the release name and sorted the list, so a row
+// is mostly about showing what it found: quality first, then the details that
+// decide whether the thing will actually play.
 function streamRow (stream, { type, meta, state }) {
   const label = stream.name || stream.title || stream.description || 'Stream'
   const lines = String(stream.title || stream.description || '').split('\n').filter(Boolean)
-  const tag = (stream.name || '').split('\n')[0] || (stream.torrent ? 'Torrent' : 'Direct')
+  const quality = stream.quality || {}
+  const rejected = stream.rejections?.length ? stream.rejections[0] : ''
+  const tag = quality.resolution || quality.sourceLabel || (stream.name || '').split('\n')[0] || (stream.torrent ? 'Torrent' : 'Direct')
+  const chips = badges(quality)
 
   const row = h(`
-    <div class="stream">
+    <div class="stream ${stream.best ? 'best' : ''} ${rejected ? 'rejected' : ''}">
       <div class="tag">${esc(tag.slice(0, 12))}</div>
       <div class="body">
-        <div class="name">${esc(lines[0] || label)}</div>
-        <div class="detail">${esc(lines.slice(1).join(' · ') || stream.addonName || '')}</div>
+        <div class="name">${stream.best ? '<span class="pick">★ Best</span> ' : ''}${esc(lines[0] || label)}</div>
+        ${chips.length ? `<div class="badges">${chips.map(badge => `<span class="badge ${esc(badge.kind || '')}">${esc(badge.text)}</span>`).join('')}</div>` : ''}
+        <div class="detail">${rejected ? `<span class="warn">${esc(rejected)}</span> · ` : ''}${esc(stream.addonName || lines.slice(1).join(' · '))}</div>
       </div>
       <div class="actions">
         <button class="btn primary small" data-act="play">▶ Play</button>
@@ -293,11 +323,20 @@ function streamRow (stream, { type, meta, state }) {
       ? `magnet:?xt=urn:btih:${stream.infoHash}${(stream.sources || []).filter(source => source.startsWith('tracker:')).map(source => `&tr=${encodeURIComponent(source.slice(8))}`).join('')}`
       : ''
     const localUrl = stream.infoHash ? `${location.origin}/api/stream/${stream.infoHash}${stream.fileIdx != null ? `/${stream.fileIdx}` : ''}` : stream.url || ''
+    // The score breakdown: why this row sits where it does, rather than a
+    // number the user is expected to take on faith.
+    const reasons = (stream.scoreReasons || [])
+      .map(reason => `<div class="row" style="justify-content:space-between"><span>${esc(reason.label)}</span><b class="${reason.delta > 0 ? 'up' : 'down'}">${reason.delta > 0 ? '+' : ''}${esc(reason.delta)}</b></div>`)
+      .join('')
+
     await confirmDialog({
       title: 'Stream details',
       confirmLabel: 'Close',
       body: `
         <div><b>Source</b><div class="muted tiny">${esc(stream.addonName || 'unknown add-on')}</div></div>
+        ${stream.quality ? `<div><b>Parsed as</b><div class="muted tiny">${esc(stream.quality.label)}${stream.quality.group ? ` · ${esc(stream.quality.group)}` : ''}${stream.quality.provider ? ` · ${esc(stream.quality.provider)}` : ''}</div></div>` : ''}
+        ${reasons ? `<div><b>Ranking (${esc(stream.profile || '')} profile) — score ${esc(stream.score)}</b><div class="tiny score-breakdown">${reasons}</div></div>` : ''}
+        ${stream.rejections?.length ? `<div><b>Why it is at the bottom</b><div class="muted tiny">${esc(stream.rejections.join(' · '))}</div></div>` : ''}
         <div><b>Description</b><div class="muted tiny" style="white-space:pre-wrap">${esc(stream.title || stream.name || '')}</div></div>
         ${magnet ? `<div><b>Magnet</b><textarea class="field mono tiny" rows="3" readonly>${esc(magnet)}</textarea></div>` : ''}
         ${localUrl ? `<div><b>Play in VLC / another player</b><textarea class="field mono tiny" rows="2" readonly>${esc(localUrl)}</textarea></div>` : ''}

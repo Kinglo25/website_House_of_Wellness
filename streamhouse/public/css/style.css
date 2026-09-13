@@ -258,6 +258,30 @@ select.field option { background: var(--bg-elevated); }
 .stream .detail { color: var(--muted); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 .stream .actions { display: flex; gap: 8px; flex: 0 0 auto; }
 
+/* What the release parser made of the name */
+.stream .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 5px; }
+.stream .badge {
+  padding: 2px 7px; border-radius: 6px;
+  background: var(--surface-strong); border: 1px solid var(--border);
+  color: var(--text); font-size: 11px; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.stream .badge.good { color: var(--green); border-color: rgba(58, 196, 125, 0.35); }
+.stream .badge.bad { color: var(--red); border-color: rgba(227, 93, 106, 0.4); }
+.stream .badge.ghost { color: var(--muted); background: transparent; }
+.stream .detail .warn { color: var(--amber); }
+
+/* The one the quality profile picked, and the ones it threw out */
+.stream.best { border-color: rgba(58, 196, 125, 0.45); background: rgba(58, 196, 125, 0.05); }
+.stream.best .tag { background: rgba(58, 196, 125, 0.16); color: #8ce0b4; }
+.stream .name .pick { color: var(--green); font-size: 11.5px; letter-spacing: 0.02em; }
+.stream.rejected { opacity: 0.55; }
+.stream.rejected:hover { opacity: 1; }
+
+.score-breakdown { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; color: var(--muted); }
+.score-breakdown .up { color: var(--green); }
+.score-breakdown .down { color: var(--red); }
+
 /* ------------------------------------------------------------- downloads */
 .toolbar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -422,6 +446,8 @@ html.tv .hero { min-height: 520px; padding: 60px 56px 40px; }
 html.tv .hero h1 { font-size: 52px; }
 html.tv .hero .poster-lg { width: 280px; flex-basis: 280px; }
 html.tv .stream { padding: 18px 22px; }
+html.tv .stream .badge { font-size: 14px; padding: 3px 9px; }
+html.tv .stream .name .pick { font-size: 15px; }
 html.tv .dl { padding: 20px 22px; }
 
 /* Focus has to be unmistakable from the sofa — a ring plus a lift. */

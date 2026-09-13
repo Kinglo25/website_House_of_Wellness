@@ -66,6 +66,30 @@ preferred. Use the ↑ button to reorder, or Disable to keep one installed but i
 **You choose your own sources, and you are responsible for them.** Install add-ons you
 have the right to use, and download only material you are allowed to download.
 
+## Which stream you get
+
+Add-ons hand back a wall of releases with the useful information buried in the
+name — `Show.S01E02.1080p.WEB-DL.DDP5.1.H.264-NTb`. StreamHouse parses every one
+of them (resolution, source, codec, audio, HDR, release group, size, seeders,
+proper/repack) and sorts the list best-first, so the top row is the one worth
+pressing Play on. **▶ Play best** on the title page plays exactly that row.
+
+What "best" means is yours to set, under **Settings → Streams**:
+
+| Profile | Picks for |
+|---|---|
+| **Plays anywhere** | a browser tab or a Chromecast: H.264 in MP4 with AAC, because that is all they decode |
+| **Balanced** | good picture, nudged towards files every device in the house can handle |
+| **Best picture** | the Android TV app, casting, or anything that plays MKV properly — remuxes, HDR, Atmos |
+
+Plus three limits: **highest resolution**, **fewest seeders** and **largest
+file**. Anything that fails one of them — along with cam rips and samples — drops
+to the bottom of the list greyed out, with the reason next to it. Nothing is
+hidden: sometimes the bad release is the only release, and that is your call to
+make, not the app's.
+
+Press ⋯ on any row to see exactly how it was scored and why it sits where it does.
+
 ## Downloading
 
 Anything with an info-hash can be downloaded rather than just streamed:
@@ -186,6 +210,8 @@ streamhouse/
 │   ├── index.js        express app, static hosting, shutdown
 │   ├── config.js       settings with defaults, persisted to disk
 │   ├── addons.js       Stremio add-on protocol client (catalog/meta/stream/subtitles)
+│   ├── parse.js        release names → resolution, source, codec, group, seeders…
+│   ├── rank.js         quality profiles: score the parsed releases, best first
 │   ├── torrent.js      the BitTorrent engine: add, select, pause, stats, cleanup
 │   ├── store.js        small atomic JSON store
 │   ├── cast.js         DLNA/UPnP: SSDP discovery + AVTransport control
@@ -212,7 +238,8 @@ streamhouse/
 
 No build step and no frontend framework — the browser loads the ES modules directly, so
 editing a file and reloading is the whole dev loop. `npm run dev` restarts the server on
-change.
+change, and `npm test` checks the parser and the ranker against real-world release
+names (no server and no network needed).
 
 ## API
 
@@ -228,8 +255,10 @@ Useful if you want to drive it from a script or another app:
 | DELETE | `/api/torrents/:id?deleteFiles=1` | |
 | GET | `/api/stream/:id/:fileIdx` | byte-range video |
 | GET | `/api/playback/:id` | what the player needs before it starts |
-| GET | `/api/catalogs`, `/api/catalog`, `/api/meta/:type/:id`, `/api/streams/:type/:id` | add-on data |
+| GET | `/api/catalogs`, `/api/catalog`, `/api/meta/:type/:id` | add-on data |
+| GET | `/api/streams/:type/:id` | add-on streams, parsed and ranked best-first |
 | GET/POST | `/api/config` | settings |
+| GET | `/api/profiles` | the stream profiles Settings offers |
 | GET | `/api/network` | LAN addresses and whether other devices can reach it |
 | POST | `/api/network/expose` | `{enabled}` — switch between local-only and network |
 | GET/POST | `/api/cast/devices` | list/scan renderers, or add one by address |
