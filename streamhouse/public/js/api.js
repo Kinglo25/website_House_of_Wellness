@@ -31,6 +31,7 @@ export const api = {
 
   getConfig: () => request('/api/config'),
   saveConfig: patch => request('/api/config', { method: 'POST', body: patch }),
+  profiles: () => request('/api/profiles'),
 
   addons: (refresh = false) => request(`/api/addons${refresh ? '?refresh=1' : ''}`),
   installAddon: url => request('/api/addons', { method: 'POST', body: { url } }),

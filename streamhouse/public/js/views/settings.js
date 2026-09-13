@@ -9,10 +9,11 @@ export default async function settings ({ container }) {
   const root = container.querySelector('#settings')
   root.append(h('<h1>Settings</h1>'))
 
-  const [config, disk, network] = await Promise.all([
+  const [config, disk, network, profiles] = await Promise.all([
     api.getConfig(),
     api.disk().catch(() => null),
-    api.network().catch(() => null)
+    api.network().catch(() => null),
+    api.profiles().catch(() => [])
   ])
   const grid = h('<div class="settings-grid"></div>')
   root.append(grid)
@@ -45,6 +46,21 @@ export default async function settings ({ container }) {
       </div>`)
     const input = node.querySelector('input')
     input.addEventListener('change', () => save({ [key]: transform(Number(input.value)) }))
+    return node
+  }
+
+  const selectSetting = ({ key, title, hint, value, options }) => {
+    const node = h(`
+      <div class="setting">
+        <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
+        <div class="control">
+          <select class="field">
+            ${options.map(option => `<option value="${esc(option.value)}" ${String(option.value) === String(value) ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}
+          </select>
+        </div>
+      </div>`)
+    const select = node.querySelector('select')
+    select.addEventListener('change', () => save({ [key]: select.value }))
     return node
   }
 
@@ -146,6 +162,44 @@ export default async function settings ({ container }) {
     </div>`)
   castPanel.querySelector('#cast-scan').addEventListener('click', () => castPicker({ title: 'StreamHouse' }))
   grid.append(castPanel)
+
+  /* ------------------------------------------------------- stream ranking */
+
+  grid.append(h('<h2 style="margin-top:22px">Streams</h2>'))
+
+  const chosen = profiles.find(profile => profile.id === config.streamProfile)
+  grid.append(selectSetting({
+    key: 'streamProfile',
+    title: 'Pick streams for',
+    hint: chosen?.hint || 'how add-on streams are ranked before you see them',
+    value: config.streamProfile,
+    options: profiles.map(profile => ({ value: profile.id, label: profile.label }))
+  }))
+  grid.append(selectSetting({
+    key: 'maxResolution',
+    title: 'Highest resolution',
+    hint: 'anything above this drops to the bottom of the list',
+    value: config.maxResolution,
+    options: [
+      { value: 'any', label: 'No limit' },
+      { value: '2160p', label: '2160p (4K)' },
+      { value: '1080p', label: '1080p' },
+      { value: '720p', label: '720p' },
+      { value: '480p', label: '480p' }
+    ]
+  }))
+  grid.append(numberSetting({
+    key: 'minSeeders',
+    title: 'Fewest seeders',
+    hint: 'releases with fewer sink to the bottom — 0 accepts any',
+    value: config.minSeeders
+  }))
+  grid.append(numberSetting({
+    key: 'maxStreamSize',
+    title: 'Largest file',
+    hint: 'GB — 0 means no limit',
+    value: config.maxStreamSize
+  }))
 
   grid.append(h('<h2 style="margin-top:22px">Downloads</h2>'))
   grid.append(textSetting({
