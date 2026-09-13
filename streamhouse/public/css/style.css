@@ -393,7 +393,7 @@ select.field option { background: var(--bg-elevated); }
 
 /* ---------------------------------------------------------------- forms */
 .settings-grid { display: grid; gap: 18px; max-width: 720px; }
-.setting { display: flex; align-items: center; gap: 18px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.setting { display: flex; align-items: center; gap: 18px; padding: 16px; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .setting .label { flex: 1; }
 .setting .label b { display: block; margin-bottom: 3px; }
 .setting .control { flex: 0 0 220px; }
@@ -405,11 +405,99 @@ select.field option { background: var(--bg-elevated); }
 /* -------------------------------------------------------------- responsive */
 @media (max-width: 860px) {
   .hero { flex-direction: column; align-items: flex-start; padding: 30px 20px; }
-  .hero .poster-lg { width: 140px; flex-basis: 140px; }
+  .hero .poster-lg { width: 140px; flex: 0 0 auto; }
   .hero h1 { font-size: 28px; }
   .pad { padding: 20px 16px 60px; }
   .search { flex-basis: auto; }
   .net-stats { display: none; }
+}
+
+/* ------------------------------------------------------------------- phone
+ * Held in one hand: the rail becomes a bottom tab bar so the content gets the
+ * whole width, and every row that sets a label beside a pile of buttons stacks
+ * instead of crushing the label into a one-letter-per-line column. */
+@media (max-width: 620px) {
+  :root { --top-height: 56px; --tab-height: 58px; }
+
+  /* A phone browser's toolbar slides away, which makes 100vh taller than the
+   * part of the page you can actually see. */
+  #app { height: 100dvh; }
+
+  nav.rail {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+    width: auto; flex: none;
+    flex-direction: row; justify-content: space-around; align-items: center;
+    gap: 0;
+    padding: 5px 2px calc(5px + env(safe-area-inset-bottom));
+    border-right: none;
+    border-top: 1px solid var(--border);
+    background: rgba(8, 8, 15, 0.94);
+    backdrop-filter: blur(12px);
+  }
+  .rail .logo, .rail .spacer { display: none; }
+  .rail a.item { width: 48px; height: 44px; border-radius: 10px; }
+  .rail a.item .badge { top: 1px; right: 1px; }
+
+  header.topbar { padding: 0 14px; gap: 10px; }
+  .search { flex: 1; padding: 8px 14px; }
+  .topbar .grow { display: none; }
+
+  /* Every scrolling view ends above the tab bar rather than under it. */
+  .pad { padding: 18px 16px calc(30px + var(--tab-height) + env(safe-area-inset-bottom)); }
+
+  h1 { font-size: 24px; }
+  h2 { font-size: 17px; }
+  .btn.small { padding: 8px 14px; }
+
+  /* Smaller posters: three to a row, and a shelf shows that it carries on. */
+  .card, .strip .card { width: 118px; flex-basis: 118px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 16px 10px; }
+  .card .title { font-size: 12.5px; }
+  .shelf { margin-bottom: 26px; }
+
+  .hero { min-height: 0; padding: 20px 16px 16px; gap: 18px; }
+  .hero h1 { font-size: 24px; }
+  .hero .poster-lg { width: 116px; flex: 0 0 auto; }
+  .hero .desc { -webkit-line-clamp: 4; }
+  .hero .cta { width: 100%; }
+  .hero .cta .btn { flex: 1 1 130px; }
+
+  /* Stream row: the file name across the top, quality tag and buttons under it. */
+  .stream { flex-wrap: wrap; gap: 10px; padding: 12px 14px; }
+  .stream .body { flex: 1 1 100%; order: 1; }
+  .stream .name { overflow-wrap: anywhere; }
+  .stream .tag { order: 2; }
+  .stream .actions { order: 3; margin-left: auto; }
+
+  /* Downloads and add-ons: buttons drop to their own line under the name. */
+  #downloads .row { flex-wrap: wrap; }
+  .dl-top { flex-wrap: wrap; }
+  .dl .thumb { width: 40px; height: 58px; flex: 0 0 40px; }
+  .dl .meta { gap: 5px 12px; }
+  .dl .actions { flex: 1 0 100%; margin-left: 0; flex-wrap: wrap; }
+
+  .addon { flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+  .addon .logo { width: 40px; height: 40px; flex: 0 0 40px; }
+  .addon .actions { flex: 1 0 100%; }
+
+  /* Settings: label first, control under it — which is what keeps the "Allow
+   * other devices" switch on screen instead of off the right-hand edge. */
+  .setting { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
+  .setting .control { flex: 1 1 auto; }
+  .setting .switch { flex: 0 0 auto; align-self: flex-start; }
+
+  /* Toasts clear the tab bar. */
+  #toasts { left: 12px; right: 12px; bottom: calc(16px + var(--tab-height) + env(safe-area-inset-bottom)); }
+  .toast { max-width: none; }
+
+  .modal header, .modal footer { padding: 14px 18px; }
+  .modal .content { padding: 18px; max-height: 62vh; }
+
+  /* In the player the phone's own volume keys do this job. */
+  .player-top { padding: 12px 14px; gap: 8px; flex-wrap: wrap; }
+  .player-bottom { padding: 12px 14px calc(14px + env(safe-area-inset-bottom)); }
+  .player-controls { gap: 8px; }
+  .vol { display: none; }
 }
 
 /* ------------------------------------------------------------------ TV mode
