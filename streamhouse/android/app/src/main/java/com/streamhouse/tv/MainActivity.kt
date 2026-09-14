@@ -1,7 +1,9 @@
 package com.streamhouse.tv
 
 import android.annotation.SuppressLint
+import android.app.UiModeManager
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -16,13 +18,20 @@ import com.streamhouse.tv.databinding.ActivityMainBinding
 
 /**
  * The app is a shell around the StreamHouse web interface, which already has a
- * ten-foot layout and D-pad navigation. Video does not play in the WebView:
- * the page hands playback to [PlayerActivity], which uses ExoPlayer and so
- * copes with MKV, HEVC and AC3 the way a WebView cannot.
+ * ten-foot layout for TVs and a touch layout for phones. That interface comes
+ * from StreamHouse running inside this app ([NodeEngine]) unless a computer
+ * was picked instead.
+ *
+ * Video does not play in the WebView: the page hands playback to
+ * [PlayerActivity], which uses ExoPlayer and so copes with MKV, HEVC and AC3
+ * the way a WebView cannot.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+
+    /** What is open: [Prefs.THIS_DEVICE], or a computer's address. */
+    private var opened: String? = null
     private var serverUrl: String? = null
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -55,24 +64,42 @@ class MainActivity : AppCompatActivity() {
             ) {
                 if (request?.isForMainFrame != true) return
                 binding.progress.visibility = View.GONE
-                showUnreachable()
+                if (opened == Prefs.THIS_DEVICE) showEngineFailure() else showUnreachable()
             }
         }
 
-        binding.retry.setOnClickListener { load() }
+        binding.retry.setOnClickListener { retry() }
         binding.change.setOnClickListener { openSetup() }
     }
 
     override fun onResume() {
         super.onResume()
-        val saved = Prefs.serverUrl(this)
-        if (saved == null) {
-            openSetup()
-            return
-        }
-        if (saved != serverUrl) {
-            serverUrl = saved
+        val chosen = Prefs.server(this)
+        if (chosen == opened) return
+        opened = chosen
+        if (chosen == Prefs.THIS_DEVICE) {
+            startBuiltIn()
+        } else {
+            serverUrl = chosen
             load()
+        }
+    }
+
+    private fun startBuiltIn() {
+        serverUrl = null
+        binding.error.visibility = View.GONE
+        binding.progress.visibility = View.VISIBLE
+        binding.starting.visibility = View.VISIBLE
+        NodeEngine.start(this) { ready ->
+            if (isDestroyed || opened != Prefs.THIS_DEVICE) return@start
+            binding.starting.visibility = View.GONE
+            if (ready) {
+                serverUrl = NodeEngine.ADDRESS
+                load()
+            } else {
+                binding.progress.visibility = View.GONE
+                showEngineFailure()
+            }
         }
     }
 
@@ -80,13 +107,41 @@ class MainActivity : AppCompatActivity() {
         val url = serverUrl ?: return
         binding.error.visibility = View.GONE
         binding.progress.visibility = View.VISIBLE
-        // ?tv=1 puts the web interface straight into ten-foot mode.
-        binding.webView.loadUrl("$url/?tv=1")
+        // ?tv=1 puts the web interface straight into ten-foot mode; a phone
+        // gets the touch layout.
+        binding.webView.loadUrl("$url/?tv=${if (isTelevision()) 1 else 0}")
         binding.webView.requestFocus()
     }
 
+    private fun isTelevision(): Boolean =
+        (getSystemService(UI_MODE_SERVICE) as UiModeManager).currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+
+    private fun retry() {
+        when {
+            opened != Prefs.THIS_DEVICE -> load()
+            // Node cannot be started twice in one process: the app has to be
+            // opened afresh.
+            NodeEngine.stopped -> {
+                finishAffinity()
+                Runtime.getRuntime().exit(0)
+            }
+            else -> startBuiltIn()
+        }
+    }
+
     private fun showUnreachable() {
-        binding.message.text = getString(R.string.cannot_reach, serverUrl ?: "")
+        showError(getString(R.string.cannot_reach, serverUrl ?: ""), getString(R.string.retry))
+    }
+
+    private fun showEngineFailure() {
+        val reason = NodeEngine.failure ?: getString(R.string.engine_not_answering)
+        val action = getString(if (NodeEngine.stopped) R.string.close_app else R.string.retry)
+        showError(getString(R.string.engine_failed, reason), action)
+    }
+
+    private fun showError(message: String, action: String) {
+        binding.message.text = message
+        binding.retry.text = action
         binding.error.visibility = View.VISIBLE
         binding.retry.requestFocus()
     }
@@ -120,7 +175,7 @@ class MainActivity : AppCompatActivity() {
                 confirmExit()
                 return true
             }
-            // Menu / settings on the remote reopens the server picker.
+            // Menu / settings on the remote opens the choice of where StreamHouse runs.
             KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS -> {
                 openSetup()
                 return true

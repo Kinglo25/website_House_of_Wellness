@@ -17,7 +17,8 @@ const DEFAULTS = {
   seedAfterDownload: true,   // keep seeding once a download completes
   seedRatioLimit: 0,         // 0 = no limit; otherwise stop seeding at this ratio
   autoStartDownloads: true,  // start downloading as soon as a torrent is added
-  streamCacheOnly: false,    // true = delete stream-only torrents when they stop
+  // true = delete stream-only torrents when they stop; the Android app turns it on
+  streamCacheOnly: process.env.STREAMHOUSE_STREAM_CACHE_ONLY === '1',
 
   // which stream wins when an add-on hands back thirty of them
   streamProfile: 'balanced',  // compatible | balanced | quality
@@ -33,6 +34,10 @@ const DEFAULTS = {
   // ui
   theme: 'midnight'
 }
+
+// The settings that follow an account between devices. Everything else — ports,
+// folders, speed limits, which player opens — belongs to one machine.
+const SYNCED_SETTINGS = ['streamProfile', 'maxResolution', 'minSeeders', 'maxStreamSize', 'autoPlayNextEpisode', 'theme']
 
 class Config {
   constructor () {
@@ -65,4 +70,4 @@ class Config {
 }
 
 export const config = new Config()
-export { DEFAULTS }
+export { DEFAULTS, SYNCED_SETTINGS }

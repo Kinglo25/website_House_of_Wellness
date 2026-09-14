@@ -10,6 +10,13 @@ export class JsonStore {
     this.fallback = fallback
     this.data = this._read()
     this._timer = null
+    this._listeners = []
+  }
+
+  // Called on every change, before the debounced write — account sync uses it
+  // to notice an edit the moment it happens.
+  onChange (listener) {
+    this._listeners.push(listener)
   }
 
   _read () {
@@ -35,6 +42,13 @@ export class JsonStore {
   }
 
   save () {
+    for (const listener of this._listeners) {
+      try {
+        listener()
+      } catch (err) {
+        console.error('[store] change listener failed:', err.message)
+      }
+    }
     if (this._timer) return
     this._timer = setTimeout(() => {
       this._timer = null

@@ -22,6 +22,22 @@
         android:textColor="#8C8FB5"
         android:textSize="15sp" />
 
+    <Button
+        android:id="@+id/thisDevice"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="@string/use_this_device" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="@string/or_a_computer"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
     <TextView
         android:id="@+id/status"
         android:layout_width="wrap_content"

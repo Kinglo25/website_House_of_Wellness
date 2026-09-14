@@ -8,6 +8,7 @@ import api from './routes/api.js'
 import { localAddresses, isLanReachable } from './network.js'
 import { startDiscovery, stopDiscovery } from './discovery.js'
 import { detectHost, printHostWarning, describeAddresses, firewallHint } from './environment.js'
+import { account } from './sync.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const publicDir = path.join(here, '..', 'public')
@@ -91,6 +92,7 @@ function banner (host, port) {
     console.log('  On your network    off — turn on "Allow other devices" in Settings to use a TV')
   }
   console.log(`  Downloads          ${config.get().downloadDir}`)
+  console.log(`  Account            ${account.signedIn ? account.status().email : 'not signed in — Settings → Account'}`)
   console.log('')
   if (reachable) {
     for (const line of firewallHint(port, 'StreamHouse')) console.log(`  ${line}`)
@@ -118,6 +120,7 @@ await start(settings.host, settings.port)
 engine.start()
 addons.refreshManifests()
 startDiscovery()
+account.start()
 
 // A malformed torrent or a dropped peer connection must never take the whole
 // app down while downloads are in flight.
@@ -135,6 +138,7 @@ async function shutdown () {
   console.log('\nStopping StreamHouse…')
   server?.close()
   stopDiscovery()
+  await account.flush()
   await engine.destroy()
   process.exit(0)
 }

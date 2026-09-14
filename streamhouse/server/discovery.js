@@ -1,7 +1,7 @@
 import dgram from 'dgram'
 import os from 'os'
 import { config } from './config.js'
-import { localAddresses } from './network.js'
+import { localAddresses, isLanReachable } from './network.js'
 
 /* Lets the Android TV app find this computer without anyone typing an IP.
  *
@@ -28,9 +28,13 @@ export function startDiscovery () {
   socket.on('message', (message, remote) => {
     if (!message.toString().startsWith(PROBE)) return
     const settings = config.get()
+    // Listening on this machine only, nothing that asked could connect — so
+    // stay out of the list rather than be picked and then fail. That includes
+    // the app on a phone or TV, which runs StreamHouse for itself alone.
+    if (!isLanReachable(settings.host)) return
     const reply = Buffer.from(JSON.stringify({
       app: 'streamhouse',
-      name: os.hostname(),
+      name: process.env.STREAMHOUSE_DEVICE_NAME || os.hostname(),
       port: settings.port,
       addresses: localAddresses().map(entry => entry.address),
       version: 1

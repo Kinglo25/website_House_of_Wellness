@@ -1,0 +1,7 @@
+{
+  "name": "webrtc-polyfill",
+  "version": "0.0.0-android",
+  "description": "Stands in for webrtc-polyfill in the Android build, where its native node-datachannel cannot load. WebTorrent sees no WebRTC and uses ordinary TCP/UDP peers.",
+  "type": "module",
+  "exports": "./index.js"
+}
