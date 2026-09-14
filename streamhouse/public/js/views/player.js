@@ -103,7 +103,40 @@ export default async function player ({ params, query, container }) {
     }
   })()
 
-  let handedToNative = false
+  // On the computer running StreamHouse, playback belongs to VLC: it plays the
+  // AC3 and DTS soundtracks a browser plays in silence. Anywhere else — a phone,
+  // another computer — the server declines and this page plays it as before.
+  // `explicit` is the "Open in VLC" button, which works whatever Settings say.
+  async function openInVlc ({ explicit = false, start = null } = {}) {
+    const key = meta.videoId || meta.imdbId || state.id || src
+    let saved = null
+    if (start === null) {
+      try {
+        saved = (await api.progress())[key] || null
+      } catch { /* no saved position */ }
+      start = Number(query.t) || saved?.time || 0
+    }
+    try {
+      await api.playInVlc({
+        url: new URL(src, location.origin).toString(),
+        title: meta.title || root.querySelector('#pl-title').textContent,
+        start,
+        progressKey: String(key),
+        meta: progressMeta(key),
+        explicit
+      })
+    } catch (err) {
+      if (explicit) toast(err.message, 'err')
+      else if (err.code === 'not-installed') toast('No VLC on this computer, so this plays in the browser — some films will be silent. Install VLC, or choose the browser in Settings.')
+      return false
+    }
+    // Put the tile on Continue watching now; VLC's own position follows.
+    if (!explicit) await seedProgress(key, start, saved)
+    toast('Playing in VLC', 'ok')
+    return true
+  }
+
+  let handedOff = false
   let src = ''
   try {
     if (kind === 'torrent') {
@@ -136,7 +169,9 @@ export default async function player ({ params, query, container }) {
       // up with an entry it can neither name nor resume.
       await seedProgress(key, start, saved)
       nativeTv.play(new URL(src, location.origin).toString(), meta.title || 'StreamHouse', start, String(key))
-      handedToNative = true
+      handedOff = true
+    } else if (await openInVlc()) {
+      handedOff = true
     } else {
       video.src = src
     }
@@ -152,8 +187,8 @@ export default async function player ({ params, query, container }) {
     return { destroy: () => root.remove() }
   }
 
-  // The native player took over: close this screen and go back to browsing.
-  if (handedToNative) {
+  // The TV's player or VLC took over: close this screen and go back to browsing.
+  if (handedOff) {
     root.remove()
     setTimeout(() => history.back(), 60)
     return { destroy () { root.remove() } }
@@ -205,9 +240,13 @@ export default async function player ({ params, query, container }) {
       <p class="muted">It is still downloading in the background. Copy the link below into VLC, IINA or MPV to watch it now — or open it from the Downloads folder once it finishes.</p>
       <textarea class="field mono tiny" rows="2" readonly>${esc(location.origin + src)}</textarea>
       <div class="row" style="justify-content:center;margin-top:14px">
+        <button class="btn primary" id="pl-vlc">Open in VLC</button>
         <button class="btn" id="pl-copy">Copy link</button>
-        <a class="btn primary" href="#/downloads">Open downloads</a>
+        <a class="btn" href="#/downloads">Open downloads</a>
       </div></div>`
+    busy.querySelector('#pl-vlc')?.addEventListener('click', async () => {
+      if (await openInVlc({ explicit: true })) history.back()
+    })
     busy.querySelector('#pl-copy')?.addEventListener('click', () => {
       navigator.clipboard.writeText(location.origin + src).then(() => toast('Link copied', 'ok'))
     })
@@ -337,6 +376,9 @@ export default async function player ({ params, query, container }) {
     const act = event.target.closest('[data-act]')?.dataset.act
     if (act === 'back') history.back()
     if (act === 'external') {
+      // VLC right here on the computer running StreamHouse; anywhere else, the
+      // link for whatever player is to hand.
+      if (await openInVlc({ explicit: true, start: video.currentTime })) return history.back()
       await navigator.clipboard.writeText(location.origin + src).catch(() => {})
       toast('Stream link copied — paste it into VLC, MPV or IINA', 'ok')
     }

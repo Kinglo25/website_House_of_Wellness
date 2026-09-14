@@ -1,11 +1,12 @@
-/* Tests for the release parser and the stream ranker.
+/* Tests for the release parser, the stream ranker and the VLC hand-off.
  *
- * Both are pure functions over strings, so this needs no server and no
- * network: every case below is a release name of the kind add-ons actually
- * hand back, asserted against the fields we claim to pull out of it. */
+ * All pure functions, so this needs no server, no network and no VLC: most
+ * cases below are release names of the kind add-ons actually hand back,
+ * asserted against the fields we claim to pull out of them. */
 
 import { parseStream, parseSize, parseSeeders, parseGroup } from '../server/parse.js'
 import { rankStreams, scoreRelease } from '../server/rank.js'
+import { candidatePaths, playableUrl, isLoopback, vlcArgs, positionFrom } from '../server/vlc.js'
 
 let passed = 0
 let failed = 0
@@ -174,6 +175,45 @@ console.log('\nRanking: the score can be explained')
 
   const tiny = scoreRelease(parseStream({ title: 'Movie.2021.1080p.WEB-DL-GRP 💾 80 MB' }), {})
   ok('an 80 MB "1080p" file is penalised', tiny.reasons.some(reason => reason.delta < 0), JSON.stringify(tiny.reasons))
+}
+
+/* ------------------------------------------------------------ VLC hand-off */
+
+console.log('\nVLC: finding it, starting it, reading it back')
+{
+  const windows = candidatePaths({
+    platform: 'win32',
+    env: { ProgramFiles: 'C:\\Program Files', 'ProgramFiles(x86)': 'C:\\Program Files (x86)', PATH: 'C:\\tools' }
+  })
+  eq('64-bit install first', windows[0], 'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe')
+  eq('then the 32-bit one', windows[1], 'C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe')
+  ok('then PATH', windows.includes('C:\\tools\\vlc.exe'), windows.join(' ; '))
+  eq('VLC_PATH overrides everything', candidatePaths({ platform: 'win32', env: { VLC_PATH: 'D:\\vlc\\vlc.exe', ProgramFiles: 'C:\\x' } }).join(), 'D:\\vlc\\vlc.exe')
+  eq('macOS app bundle', candidatePaths({ platform: 'darwin', env: {} })[0], '/Applications/VLC.app/Contents/MacOS/VLC')
+  eq('Linux looks on PATH', candidatePaths({ platform: 'linux', env: { PATH: '/usr/bin:/snap/bin' } }).join(), '/usr/bin/vlc,/snap/bin/vlc')
+
+  eq('a stream URL is accepted', playableUrl('http://127.0.0.1:11471/api/stream/abc/0'), 'http://127.0.0.1:11471/api/stream/abc/0')
+  eq('a local file is refused', playableUrl('file:///C:/Windows/win.ini'), null)
+  eq('a VLC option is refused', playableUrl('--extraintf=telnet'), null)
+  eq('nothing is refused', playableUrl(undefined), null)
+
+  ok('127.0.0.1 is this computer', isLoopback('127.0.0.1'))
+  ok('::1 is this computer', isLoopback('::1'))
+  ok('IPv4-mapped loopback is this computer', isLoopback('::ffff:127.0.0.1'))
+  ok('a phone is not', !isLoopback('192.168.1.40'))
+  ok('::1 is not a prefix match', !isLoopback('::10'))
+
+  const args = vlcArgs({ url: 'http://127.0.0.1:11471/api/stream/abc/0', title: 'Movie', start: 754.6, httpPort: 50123, httpPassword: 'secret' })
+  eq('the stream is the last argument', args.at(-1), 'http://127.0.0.1:11471/api/stream/abc/0')
+  ok('resumes at the saved second', args.includes('--start-time=754'), args.join(' '))
+  ok('web interface on loopback only', args.includes('--http-host=127.0.0.1'))
+  ok('its own window, whatever VLC preferences say', args.includes('--no-one-instance'))
+  ok('no start time from the beginning', !vlcArgs({ url: 'http://x/', httpPort: 1, httpPassword: 'p' }).some(arg => arg.startsWith('--start-time')))
+
+  eq('position read back', JSON.stringify(positionFrom({ time: 120, length: 5400, state: 'playing' })), '{"time":120,"duration":5400}')
+  eq('an unknown length is kept as 0', positionFrom({ time: 60, length: -1 })?.duration, 0)
+  eq('0 seconds is not a position — a resume seek has not landed', positionFrom({ time: 0, length: 5400 }), null)
+  eq('no answer is not a position', positionFrom(null), null)
 }
 
 /* -------------------------------------------------------------------- done */

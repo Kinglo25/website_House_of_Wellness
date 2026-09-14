@@ -9,6 +9,7 @@ import { JsonStore } from '../store.js'
 import { mimeFor, isBrowserPlayable, srtToVtt } from '../mime.js'
 import { localAddresses, lanUrl, isLanReachable } from '../network.js'
 import * as cast from '../cast.js'
+import * as vlc from '../vlc.js'
 
 const library = new JsonStore('library', [])
 const progress = new JsonStore('progress', {})
@@ -140,15 +141,21 @@ router.delete('/library/:id', (req, res) => {
 
 router.get('/progress', (req, res) => res.json(progress.get()))
 
-router.post('/progress', (req, res) => {
-  const { id, time, duration, meta } = req.body || {}
-  if (!id) return res.status(400).json({ error: 'id is required' })
+// Shared by the browser player, which posts here, and VLC, whose position the
+// server reads back itself.
+function recordProgress ({ id, time, duration, meta }) {
   const all = progress.get()
   const finished = duration > 0 && time / duration > 0.93
   if (finished) delete all[id]
   else all[id] = { id, time: Number(time) || 0, duration: Number(duration) || 0, meta: meta || all[id]?.meta, updatedAt: Date.now() }
   progress.set(all)
-  res.json(all[id] || { id, cleared: true })
+  return all[id] || { id, cleared: true }
+}
+
+router.post('/progress', (req, res) => {
+  const { id, time, duration, meta } = req.body || {}
+  if (!id) return res.status(400).json({ error: 'id is required' })
+  res.json(recordProgress({ id, time, duration, meta }))
 })
 
 router.delete('/progress/:id', (req, res) => {
@@ -276,6 +283,48 @@ router.get('/playback/:id', wrap(async (req, res) => {
     savePath: path.join(record.savePath, file.path),
     files: torrent.files.map((entry, index) => ({ index, name: entry.name, length: entry.length }))
   })
+}))
+
+/* --------------------------------------------------------------------- vlc */
+
+// Whether the browser asking is on the computer running StreamHouse — by
+// loopback, or by one of this machine's own addresses (a LAN or Tailscale URL
+// opened on the same desk).
+function fromThisComputer (req) {
+  const address = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '')
+  return vlc.isLoopback(address) || localAddresses().some(entry => entry.address === address)
+}
+
+router.get('/vlc', (req, res) => {
+  res.json({ ...vlc.status(), local: fromThisComputer(req) })
+})
+
+// Open a stream in VLC here. `explicit` is the player's "Open in VLC" button,
+// which works even when Settings say to play in the browser. A phone asking is
+// refused: VLC would start on a screen nobody is watching.
+router.post('/vlc/play', wrap(async (req, res) => {
+  const { url, title, start, progressKey, meta, explicit } = req.body || {}
+  if (!explicit && config.get().desktopPlayer === 'browser') {
+    return res.status(409).json({ error: 'Settings say to play in the browser', code: 'disabled' })
+  }
+  if (!fromThisComputer(req)) {
+    return res.status(409).json({ error: 'VLC opens on the computer running StreamHouse, not this device', code: 'not-local' })
+  }
+  const target = vlc.playableUrl(url)
+  if (!target) return res.status(400).json({ error: 'A stream URL is required' })
+  const bin = vlc.findVlc()
+  if (!bin) {
+    return res.status(409).json({ error: 'VLC is not installed on this computer — get it from videolan.org', code: 'not-installed' })
+  }
+
+  await vlc.play({
+    bin,
+    url: target,
+    title: typeof title === 'string' ? title : '',
+    start: Number(start) || 0,
+    onProgress: progressKey ? ({ time, duration }) => recordProgress({ id: String(progressKey), time, duration, meta }) : null
+  })
+  res.json({ ok: true })
 }))
 
 /* ------------------------------------------------------------- network */

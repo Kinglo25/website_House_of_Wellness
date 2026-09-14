@@ -13,7 +13,12 @@ async function request (url, options = {}) {
   } catch {
     data = text
   }
-  if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
+  if (!res.ok) {
+    const err = new Error(data?.error || `Request failed (${res.status})`)
+    // Some refusals are expected, and the caller needs to know which one.
+    err.code = data?.code || null
+    throw err
+  }
   return data
 }
 
@@ -71,6 +76,9 @@ export const api = {
   playback: (id, fileIdx) => request(`/api/playback/${encodeURIComponent(id)}${qs({ fileIdx })}`),
   streamUrl: (id, fileIdx) => `/api/stream/${encodeURIComponent(id)}${fileIdx === undefined || fileIdx === null ? '' : `/${fileIdx}`}`,
   subtitleUrl: url => `/api/subtitle${qs({ url })}`,
+
+  vlc: () => request('/api/vlc'),
+  playInVlc: body => request('/api/vlc/play', { method: 'POST', body }),
 
   network: () => request('/api/network'),
   exposeNetwork: enabled => request('/api/network/expose', { method: 'POST', body: { enabled } }),

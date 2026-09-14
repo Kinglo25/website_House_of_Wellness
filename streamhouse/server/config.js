@@ -27,6 +27,7 @@ const DEFAULTS = {
 
   // player
   playerVolume: 1,
+  desktopPlayer: 'vlc',      // vlc | browser — what Play opens on the computer running StreamHouse
   autoPlayNextEpisode: true,
 
   // ui
