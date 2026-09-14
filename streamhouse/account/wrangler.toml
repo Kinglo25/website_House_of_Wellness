@@ -1,0 +1,13 @@
+name = "streamhouse-account"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[vars]
+# Set to "false" and redeploy once everyone in the house has an account.
+ALLOW_SIGNUPS = "true"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "streamhouse-account"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"

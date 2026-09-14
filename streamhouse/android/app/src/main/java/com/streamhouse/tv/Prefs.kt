@@ -2,19 +2,22 @@ package com.streamhouse.tv
 
 import android.content.Context
 
-/** Remembers which StreamHouse server this TV talks to. */
+/** Remembers where this device's StreamHouse runs: inside the app, or on a computer. */
 object Prefs {
     private const val FILE = "streamhouse"
     private const val KEY_SERVER = "server_url"
 
-    fun serverUrl(context: Context): String? =
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            .getString(KEY_SERVER, null)
+    /** Stored in place of an address when the app runs StreamHouse itself — the default. */
+    const val THIS_DEVICE = "this-device"
 
-    fun setServerUrl(context: Context, url: String?) {
+    fun server(context: Context): String =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_SERVER, null) ?: THIS_DEVICE
+
+    fun setServer(context: Context, value: String) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_SERVER, url)
+            .putString(KEY_SERVER, value)
             .apply()
     }
 

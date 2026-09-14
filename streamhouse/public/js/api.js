@@ -55,6 +55,12 @@ export const api = {
   addToLibrary: item => request('/api/library', { method: 'POST', body: item }),
   removeFromLibrary: id => request(`/api/library/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+  account: () => request('/api/account'),
+  accountLogin: body => request('/api/account/login', { method: 'POST', body }),
+  accountSignup: body => request('/api/account/signup', { method: 'POST', body }),
+  accountLogout: () => request('/api/account/logout', { method: 'POST' }),
+  accountSync: () => request('/api/account/sync', { method: 'POST' }),
+
   progress: () => request('/api/progress'),
   saveProgress: body => request('/api/progress', { method: 'POST', body }),
   clearProgress: id => request(`/api/progress/${encodeURIComponent(id)}`, { method: 'DELETE' }),

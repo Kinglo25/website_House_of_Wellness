@@ -194,6 +194,24 @@ class AddonManager {
     return next
   }
 
+  // The add-on list as another device has it: the same add-ons in the same
+  // order, switched on and off the same way. Manifests already here are kept;
+  // the rest are fetched.
+  replaceList (entries) {
+    const known = new Map(this.list().map(addon => [addon.transportUrl, addon]))
+    const next = entries
+      .filter(entry => entry?.transportUrl)
+      .map(entry => ({
+        ...(known.get(entry.transportUrl) || { manifest: null, error: null, addedAt: Date.now() }),
+        transportUrl: entry.transportUrl,
+        enabled: entry.enabled !== false
+      }))
+    this.store.set(next)
+    clearAddonCache()
+    if (next.some(addon => !addon.manifest)) this.refreshManifests()
+    return next
+  }
+
   // Flattened list of every catalogue every enabled add-on exposes.
   catalogs () {
     const out = []

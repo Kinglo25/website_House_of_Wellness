@@ -5,14 +5,12 @@ import { config } from '../config.js'
 import { addons, clearAddonCache } from '../addons.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { rankStreams, PROFILES } from '../rank.js'
-import { JsonStore } from '../store.js'
+import { library, progress } from '../history.js'
 import { mimeFor, isBrowserPlayable, srtToVtt } from '../mime.js'
 import { localAddresses, lanUrl, isLanReachable } from '../network.js'
 import * as cast from '../cast.js'
 import * as vlc from '../vlc.js'
-
-const library = new JsonStore('library', [])
-const progress = new JsonStore('progress', {})
+import { account } from '../sync.js'
 
 const router = express.Router()
 
@@ -121,7 +119,10 @@ router.get('/search', wrap(async (req, res) => {
 
 /* ----------------------------------------------------------------- library */
 
-router.get('/library', (req, res) => res.json(library.get()))
+router.get('/library', wrap(async (req, res) => {
+  await account.fresh()
+  res.json(library.get())
+}))
 
 router.post('/library', (req, res) => {
   const item = req.body || {}
@@ -139,7 +140,12 @@ router.delete('/library/:id', (req, res) => {
 
 /* -------------------------------------------------------- playback history */
 
-router.get('/progress', (req, res) => res.json(progress.get()))
+// Whatever another device watched shows up here: a stale copy is refreshed
+// from the account server first, for as long as that is quick.
+router.get('/progress', wrap(async (req, res) => {
+  await account.fresh()
+  res.json(progress.get())
+}))
 
 // Shared by the browser player, which posts here, and VLC, whose position the
 // server reads back itself.
@@ -164,6 +170,22 @@ router.delete('/progress/:id', (req, res) => {
   progress.set(all)
   res.json({ removed: req.params.id })
 })
+
+/* ----------------------------------------------------------------- account */
+
+router.get('/account', (req, res) => res.json(account.status()))
+
+router.post('/account/login', wrap(async (req, res) => {
+  res.json(await account.signIn({ mode: 'login', email: req.body?.email, password: req.body?.password }))
+}))
+
+router.post('/account/signup', wrap(async (req, res) => {
+  res.status(201).json(await account.signIn({ mode: 'signup', email: req.body?.email, password: req.body?.password }))
+}))
+
+router.post('/account/logout', wrap(async (req, res) => res.json(await account.signOut())))
+
+router.post('/account/sync', wrap(async (req, res) => res.json(await account.sync())))
 
 /* ---------------------------------------------------------------- torrents */
 

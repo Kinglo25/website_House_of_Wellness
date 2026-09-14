@@ -15,6 +15,18 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center" />
 
+    <!-- The first start unpacks StreamHouse, which takes a while on a TV. -->
+    <TextView
+        android:id="@+id/starting"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="64dp"
+        android:text="@string/starting"
+        android:textColor="#8C8FB5"
+        android:textSize="18sp"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/error"
         android:layout_width="match_parent"

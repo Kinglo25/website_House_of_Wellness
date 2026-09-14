@@ -1,0 +1,14 @@
+{
+  "name": "streamhouse-account",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The StreamHouse account server: a Cloudflare Worker that syncs library, progress, add-ons and settings between devices.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler d1 migrations apply streamhouse-account --local && wrangler dev",
+    "deploy": "wrangler d1 migrations apply streamhouse-account --remote && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.131.2"
+  }
+}

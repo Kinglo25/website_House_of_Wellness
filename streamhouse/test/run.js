@@ -7,6 +7,7 @@
 import { parseStream, parseSize, parseSeeders, parseGroup } from '../server/parse.js'
 import { rankStreams, scoreRelease } from '../server/rank.js'
 import { candidatePaths, playableUrl, isLoopback, vlcArgs, positionFrom } from '../server/vlc.js'
+import { fingerprint, localChanges, remoteWins } from '../server/merge.js'
 
 let passed = 0
 let failed = 0
@@ -214,6 +215,57 @@ console.log('\nVLC: finding it, starting it, reading it back')
   eq('an unknown length is kept as 0', positionFrom({ time: 60, length: -1 })?.duration, 0)
   eq('0 seconds is not a position — a resume seek has not landed', positionFrom({ time: 0, length: 5400 }), null)
   eq('no answer is not a position', positionFrom(null), null)
+}
+
+/* ------------------------------------------------------------- account sync */
+
+console.log('\nAccount sync: what gets pushed')
+{
+  const entry = { id: 'tt1', time: 300, duration: 5400, updatedAt: 1000 }
+  const stamp = value => value?.updatedAt || 0
+
+  const fresh = localChanges({ kind: 'progress', current: { tt1: entry }, stamp, now: 9999 })
+  eq('a never-synced item is pushed', fresh.length, 1)
+  eq('with its own date', fresh[0].updatedAt, 1000)
+
+  eq('an item unchanged since the last sync is not',
+    localChanges({ kind: 'progress', current: { tt1: entry }, agreed: { tt1: fingerprint(entry) }, stamp }).length, 0)
+
+  const moved = localChanges({ kind: 'progress', current: { tt1: { ...entry, time: 600, updatedAt: 2000 } }, agreed: { tt1: fingerprint(entry) }, stamp })
+  eq('an item edited since is', moved[0]?.updatedAt, 2000)
+
+  const gone = localChanges({ kind: 'progress', current: {}, agreed: { tt1: fingerprint(entry) }, stamp, changedAt: 3000 })
+  eq('a deleted item is pushed as a deletion', gone[0]?.value, null)
+  eq('dated when this device last edited that kind', gone[0]?.updatedAt, 3000)
+  eq('an item already agreed deleted is not pushed again',
+    localChanges({ kind: 'progress', current: {}, agreed: { tt1: null }, stamp }).length, 0)
+
+  eq('settings are never pushed as deletions',
+    localChanges({ kind: 'setting', current: {}, agreed: { theme: fingerprint('midnight') }, deletable: false }).length, 0)
+  eq('a dateless item falls back to now', localChanges({ kind: 'setting', current: { theme: 'day' }, now: 4242 })[0]?.updatedAt, 4242)
+}
+
+console.log('\nAccount sync: who wins')
+{
+  const stamp = value => value?.updatedAt || 0
+  const mine = { id: 'tt1', time: 600, updatedAt: 2000 }
+  const older = { kind: 'progress', key: 'tt1', value: { id: 'tt1', time: 300, updatedAt: 1000 }, updatedAt: 1000 }
+  const newer = { kind: 'progress', key: 'tt1', value: { id: 'tt1', time: 900, updatedAt: 3000 }, updatedAt: 3000 }
+
+  ok('untouched here: the server copy wins', remoteWins({ remote: newer, local: older.value, agreed: fingerprint(older.value), stamp }))
+  ok('edited here, server older: this device wins', !remoteWins({ remote: older, local: mine, agreed: fingerprint({ id: 'tt1', time: 0 }), stamp }))
+  ok('edited here, server newer: the server wins', remoteWins({ remote: newer, local: mine, agreed: fingerprint({ id: 'tt1', time: 0 }), stamp }))
+  ok('first sync, both have it: newest wins (here)', !remoteWins({ remote: older, local: mine, agreed: undefined, stamp }))
+  ok('first sync, both have it: newest wins (server)', remoteWins({ remote: newer, local: mine, agreed: undefined, stamp }))
+  ok('nothing here yet: the server copy wins', remoteWins({ remote: older, local: null, agreed: undefined, stamp }))
+
+  const accountTheme = { kind: 'setting', key: 'theme', value: 'day', updatedAt: 500 }
+  ok('a new device takes the account\'s settings', remoteWins({ remote: accountTheme, local: 'midnight', agreed: undefined }))
+  ok('unless it changed them itself since', !remoteWins({ remote: accountTheme, local: 'midnight', agreed: undefined, changedAt: 900 }))
+
+  const removed = { kind: 'progress', key: 'tt1', value: null, updatedAt: 2500 }
+  ok('a deletion from elsewhere removes an untouched item', remoteWins({ remote: removed, local: older.value, agreed: fingerprint(older.value), stamp }))
+  ok('but not one this device has watched further since', !remoteWins({ remote: removed, local: newer.value, agreed: fingerprint(older.value), stamp }))
 }
 
 /* -------------------------------------------------------------------- done */

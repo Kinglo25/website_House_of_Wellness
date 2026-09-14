@@ -39,6 +39,7 @@ PORT=8080 npm start                       # different web port
 HOST=0.0.0.0 npm start                    # reachable from your TV / phone
 STREAMHOUSE_DOWNLOADS=/media/films npm start
 STREAMHOUSE_DIR=/tmp/sh-test npm start    # separate settings/state directory
+STREAMHOUSE_ACCOUNT_SERVER=http://127.0.0.1:8787 npm start   # a different account server
 ```
 
 Settings live in `~/.streamhouse/` (config, add-on list, library, watch history and
@@ -155,10 +156,15 @@ already on disk and picks up where it left off — even with no peers around.
 
 ## On your phone
 
-There is nothing to install on the phone from an app store: StreamHouse runs on the
-computer, and the phone opens it in its browser. Turn on **Settings → TV → Allow other
-devices** (or start with `HOST=0.0.0.0 npm start`), then open the network address the
-banner prints — `http://192.168.1.34:11471` — on the phone, over the same Wi-Fi.
+On an **Android phone**, install the same app as the TV
+([Android TV: install the app](#0-android-tv-install-the-app)). It runs StreamHouse on
+the phone itself, so it works anywhere with no computer, and your account keeps it in
+step with your other devices.
+
+On an **iPhone**, or to use a computer's StreamHouse without installing anything, the
+phone opens it in its browser. Turn on **Settings → TV → Allow other devices** (or
+start with `HOST=0.0.0.0 npm start`), then open the network address the banner prints —
+`http://192.168.1.34:11471` — on the phone, over the same Wi-Fi.
 
 On a narrow screen the layout rearranges itself: the icon rail moves to the bottom of
 the screen as a tab bar, posters shrink to three across, and rows that put a name beside
@@ -176,15 +182,38 @@ From there the phone is a perfectly good remote for the TV: browse on the phone,
 **📺 TV** on a stream, pick the TV, and it plays there while the phone keeps the
 transport controls. See below.
 
-## Keeping your place across machines
+## Accounts: one library on every device
 
-Watch history belongs to the **server**, not to the browser you watch in. Every
-device that opens the same StreamHouse therefore shares one *Continue watching*
-list: start an episode at the desk, pick it up on the laptop at the same second.
+Sign in under **Settings → Account** and your library, *Continue watching*, add-ons and
+stream settings follow you to every device signed in to the same account — the laptop,
+the TV app, the phone. Stop a film on the TV, open the laptop, and it is on the home page
+at the same second.
 
-At home that comes for free once **Settings → TV → Allow other devices** is on —
-other machines open `http://192.168.1.x:11471` and are looking at the same library
-and the same progress.
+Films themselves do not sync: each device fetches its own copy when you press Play. Nor
+do the settings that belong to one machine — its ports, download folder, speed limits and
+which player opens.
+
+- **Create account** on the first device, **Sign in** on the others. A device's first
+  sign-in merges: what it had and what the account has both survive, and where both have
+  the same title, the more recent position wins. Add-ons and stream settings come from the
+  account.
+- An edit goes up a few seconds after you make it. Each device looks for the others' edits
+  every minute, and again whenever you open the home page or the library.
+- Offline is fine: edits wait, and go up once the account server is reachable again.
+- **Sign out** keeps everything already on that device; it just stops syncing.
+
+The account server is a small Cloudflare Worker in [`account/`](account). It runs on
+Cloudflare's free plan and stores those lists and nothing else. Your password never leaves
+the device: it is stretched into a key there, and the server keeps only a hash of that
+key. [`account/README.md`](account/README.md) covers deploying your own.
+
+### Without an account: one StreamHouse, many screens
+
+Watch history belongs to the StreamHouse **server**, not to the browser you watch in, so
+every device that opens the same StreamHouse shares one *Continue watching* list even
+without signing in. At home that comes for free once **Settings → TV → Allow other
+devices** is on — other machines open `http://192.168.1.x:11471` and are looking at the
+same library and the same progress.
 
 For the same thing from outside the house, put the machines on a
 [Tailscale](https://tailscale.com/download) network. It is free for personal use,
@@ -203,15 +232,16 @@ StreamHouse has **no password** (see [Notes](#notes)), which is precisely why a
 private tailnet is the right way to reach it from outside — do not port-forward
 it instead.
 
-The one thing this model needs is that the computer running StreamHouse is
-switched on.
+The one thing this needs is that the computer running StreamHouse is switched on — which
+is what an account does away with.
 
 ## Watching on your TV
 
-Three ways, depending on what your TV can do. All of them need the app reachable
-from your network first: **Settings → TV → Allow other devices**, which flips the
-server from this-computer-only to your whole home network and shows the address to
-use. The startup banner prints it too:
+Four ways, depending on what your TV can do. The Android TV app runs StreamHouse
+itself. The other three use StreamHouse on a computer, which has to be reachable from
+your network first: **Settings → TV → Allow other devices** flips the server from
+this-computer-only to your whole home network and shows the address to use. The
+startup banner prints it too:
 
 ```
   StreamHouse is running
@@ -222,16 +252,18 @@ use. The startup banner prints it too:
 ### 0. Android TV: install the app
 
 Android TV, Google TV and Fire TV have no usable web browser, so they get a real
-app instead — sideloaded from an APK exactly like SmartTube:
+app instead — sideloaded from an APK exactly like SmartTube. StreamHouse runs inside
+it, so the TV needs no computer at all:
 
 1. Download `streamhouse-tv.apk` from the repository's **`tv-latest`** release
-   (GitHub Actions rebuilds it on every change to `streamhouse/android/`).
+   (GitHub Actions rebuilds it whenever StreamHouse changes).
 2. Install it on the TV with the *Downloader* app, or `adb install`.
-3. Open it, and press OK on your computer in the list it finds.
+3. Open it, and sign in under **Settings → Account** to bring your library along.
 
 It plays video through ExoPlayer rather than a WebView, so the MKV / H.265 / AC3
-files torrents actually contain play properly. See
-[`android/README.md`](android/README.md) for the details.
+files torrents actually contain play properly. It can use StreamHouse on a computer
+instead — press **Menu** on the remote. See [`android/README.md`](android/README.md)
+for the details.
 
 ### 1. The TV's own web browser (Samsung, LG and other smart TVs)
 
@@ -338,7 +370,11 @@ streamhouse/
 │   ├── mime.js         content types, SRT → WebVTT
 │   ├── paths.js        where state and media live
 │   ├── vlc.js          hands playback to VLC and reads the position back
+│   ├── history.js      the library and Continue watching stores
+│   ├── sync.js         account sign-in, and pushing/pulling what follows you
+│   ├── merge.js        the rules sync merges by: what changed, who wins
 │   └── routes/api.js   the REST API + byte-range stream server
+├── account/            the account server: a Cloudflare Worker (see account/README.md)
 ├── windows/            double-click launcher, icon and shortcut maker
 ├── android/            the Android TV app (see android/README.md)
 └── public/
@@ -358,7 +394,8 @@ streamhouse/
 No build step and no frontend framework — the browser loads the ES modules directly, so
 editing a file and reloading is the whole dev loop. `npm run dev` restarts the server on
 change, and `npm test` checks the parser and the ranker against real-world release
-names (no server and no network needed).
+names, plus the VLC hand-off and the rules account sync merges by (no server and no
+network needed).
 
 ## API
 
@@ -379,6 +416,9 @@ Useful if you want to drive it from a script or another app:
 | GET | `/api/catalogs`, `/api/catalog`, `/api/meta/:type/:id` | add-on data |
 | GET | `/api/streams/:type/:id` | add-on streams, parsed and ranked best-first |
 | GET/POST | `/api/config` | settings |
+| GET | `/api/account` | signed in or not, when it last synced, and the last error |
+| POST | `/api/account/signup`｜`/login` | `{email, password}` — the password is stretched here and never sent on |
+| POST | `/api/account/sync`｜`/logout` | sync now; stop syncing |
 | GET | `/api/profiles` | the stream profiles Settings offers |
 | GET | `/api/network` | LAN addresses and whether other devices can reach it |
 | POST | `/api/network/expose` | `{enabled}` — switch between local-only and network |

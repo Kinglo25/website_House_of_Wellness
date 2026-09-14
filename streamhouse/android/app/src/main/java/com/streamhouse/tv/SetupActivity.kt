@@ -7,7 +7,10 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.streamhouse.tv.databinding.ActivitySetupBinding
 
-/** Picks which computer runs StreamHouse: found automatically, or typed in. */
+/**
+ * Picks where StreamHouse runs: on this device, which needs nothing else, or
+ * on a computer — found automatically, or typed in.
+ */
 class SetupActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySetupBinding
@@ -18,8 +21,12 @@ class SetupActivity : AppCompatActivity() {
         binding = ActivitySetupBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.address.setText(Prefs.serverUrl(this) ?: "")
+        binding.address.setText(Prefs.server(this).takeIf { it != Prefs.THIS_DEVICE } ?: "")
 
+        binding.thisDevice.setOnClickListener {
+            Prefs.setServer(this, Prefs.THIS_DEVICE)
+            finish()
+        }
         binding.scan.setOnClickListener { scan() }
         binding.connect.setOnClickListener { connect(binding.address.text.toString()) }
         binding.servers.setOnItemClickListener { _, _, position, _ ->
@@ -58,7 +65,7 @@ class SetupActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.enter_address, Toast.LENGTH_SHORT).show()
             return
         }
-        Prefs.setServerUrl(this, url)
+        Prefs.setServer(this, url)
         finish()
     }
 }

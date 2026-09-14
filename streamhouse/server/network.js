@@ -4,7 +4,13 @@ import os from 'os'
 // (casting, or typing the address into the TV browser) needs the LAN address.
 export function localAddresses () {
   const out = []
-  for (const [name, entries] of Object.entries(os.networkInterfaces())) {
+  let interfaces = {}
+  try {
+    interfaces = os.networkInterfaces()
+  } catch {
+    // Android 11 and later refuse apps the list of network interfaces.
+  }
+  for (const [name, entries] of Object.entries(interfaces)) {
     for (const entry of entries || []) {
       if (entry.family !== 'IPv4' && entry.family !== 4) continue
       if (entry.internal) continue

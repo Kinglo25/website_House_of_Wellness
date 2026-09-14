@@ -1,5 +1,5 @@
 import { api } from '../api.js'
-import { h, esc, toast, bytes } from '../util.js'
+import { h, esc, toast, bytes, confirmDialog } from '../util.js'
 import { setTvMode } from '../tv.js'
 import { castPicker } from '../cast.js'
 
@@ -9,12 +9,13 @@ export default async function settings ({ container }) {
   const root = container.querySelector('#settings')
   root.append(h('<h1>Settings</h1>'))
 
-  const [config, disk, network, profiles, vlc] = await Promise.all([
+  const [config, disk, network, profiles, vlc, account] = await Promise.all([
     api.getConfig(),
     api.disk().catch(() => null),
     api.network().catch(() => null),
     api.profiles().catch(() => []),
-    api.vlc().catch(() => null)
+    api.vlc().catch(() => null),
+    api.account().catch(() => null)
   ])
   const grid = h('<div class="settings-grid"></div>')
   root.append(grid)
@@ -80,9 +81,95 @@ export default async function settings ({ container }) {
     return node
   }
 
+  /* ------------------------------------------------------------- account */
+
+  grid.append(h('<h2 style="margin-top:8px">Account</h2>'))
+  const accountPanel = h('<div class="setting" style="align-items:flex-start"></div>')
+  grid.append(accountPanel)
+
+  const ago = time => {
+    const seconds = Math.round((Date.now() - time) / 1000)
+    if (seconds < 45) return 'just now'
+    if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`
+    if (seconds < 86400) return `${Math.round(seconds / 3600)} h ago`
+    return `on ${new Date(time).toLocaleDateString()}`
+  }
+
+  function drawAccount (info) {
+    accountPanel.innerHTML = ''
+
+    if (info?.signedIn) {
+      const line = info.lastError
+        ? `<span class="tiny" style="color:#ff9ba4">${esc(info.lastError)}</span>`
+        : `<span class="tiny muted">${info.lastSync ? `Synced ${esc(ago(info.lastSync))}.` : 'Syncing…'} Your library,
+          Continue watching, add-ons and stream settings follow you to every device signed in here.</span>`
+      accountPanel.append(
+        h(`<div class="label"><b>Signed in as ${esc(info.email)}</b>${line}</div>`),
+        h(`<div class="control row" style="gap:8px">
+          <button class="btn" data-act="sync">Sync now</button>
+          <button class="btn" data-act="logout">Sign out</button>
+        </div>`)
+      )
+      accountPanel.querySelector('[data-act="sync"]').addEventListener('click', async event => {
+        event.currentTarget.disabled = true
+        const next = await api.accountSync().catch(err => ({ ...info, lastError: err.message }))
+        drawAccount(next)
+        toast(next.lastError || 'Synced', next.lastError ? 'err' : 'ok')
+      })
+      accountPanel.querySelector('[data-act="logout"]').addEventListener('click', async () => {
+        const sure = await confirmDialog({
+          title: 'Sign out?',
+          body: 'Everything already on this device stays here — it just stops syncing with your other devices.',
+          confirmLabel: 'Sign out'
+        })
+        if (!sure) return
+        drawAccount(await api.accountLogout().catch(() => null))
+        toast('Signed out', 'ok')
+      })
+      return
+    }
+
+    accountPanel.append(h(`
+      <div class="label">
+        <b>Sign in to sync your devices</b>
+        <span class="tiny muted">Your library, Continue watching, add-ons and stream settings follow you
+        to every device signed in to the same account. Films do not — each device fetches its own.</span>
+        ${info?.lastError ? `<span class="tiny" style="color:#ff9ba4">${esc(info.lastError)}</span>` : ''}
+        <form style="display:grid;gap:8px;margin-top:12px;max-width:360px">
+          <input class="field" name="email" type="email" autocomplete="username" placeholder="Email" required>
+          <input class="field" name="password" type="password" autocomplete="current-password" minlength="8"
+            placeholder="Password — 8 characters or more" required>
+          <div class="row" style="gap:8px">
+            <button class="btn primary" type="submit" data-mode="login">Sign in</button>
+            <button class="btn" type="submit" data-mode="signup">Create account</button>
+          </div>
+        </form>
+      </div>`))
+
+    const form = accountPanel.querySelector('form')
+    form.addEventListener('submit', async event => {
+      event.preventDefault()
+      const mode = event.submitter?.dataset.mode || 'login'
+      const buttons = [...form.querySelectorAll('button')]
+      buttons.forEach(button => { button.disabled = true })
+      const body = { email: form.email.value, password: form.password.value }
+      try {
+        const next = await (mode === 'signup' ? api.accountSignup(body) : api.accountLogin(body))
+        toast(mode === 'signup' ? 'Account created — this device is syncing' : 'Signed in — this device is synced', 'ok')
+        drawAccount(next)
+        // Add-ons and settings may just have arrived from another device.
+        setTimeout(() => location.reload(), 900)
+      } catch (err) {
+        toast(err.message, 'err')
+        buttons.forEach(button => { button.disabled = false })
+      }
+    })
+  }
+  drawAccount(account)
+
   /* ------------------------------------------------------------ playback */
 
-  grid.append(h('<h2 style="margin-top:8px">Playback</h2>'))
+  grid.append(h('<h2 style="margin-top:22px">Playback</h2>'))
   const vlcHint = vlc?.available
     ? `VLC plays every soundtrack; in the browser many films have no sound. Phones, TVs and other
       computers always play in the page. <span class="mono">${esc(vlc.path)}</span>`

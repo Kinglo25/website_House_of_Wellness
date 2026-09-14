@@ -1,12 +1,19 @@
-name: Build Android TV APK
+name: Build Android APK
 
-# Builds the sideloadable APK. GitHub's runners already have the Android SDK,
-# so nobody needs Android Studio installed to get a working app.
+# Builds the sideloadable APK for Android TV and Android phones. GitHub's
+# runners already have the Android SDK, so nobody needs Android Studio.
+#
+# The APK carries StreamHouse itself — streamhouse/server, public and the
+# server's node_modules — so a change there rebuilds it too.
 
 on:
   push:
     paths:
       - 'streamhouse/android/**'
+      - 'streamhouse/server/**'
+      - 'streamhouse/public/**'
+      - 'streamhouse/package.json'
+      - 'streamhouse/package-lock.json'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
@@ -26,6 +33,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install the server's dependencies
+        working-directory: streamhouse
+        run: npm ci --omit=dev
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
@@ -44,17 +60,19 @@ jobs:
           if-no-files-found: error
 
       # A rolling pre-release gives the TV's Downloader app a stable URL to
-      # fetch, which is how sideloaded TV apps are normally installed.
+      # fetch, which is how sideloaded apps are normally installed. Only main
+      # publishes it, so a work-in-progress branch never replaces it.
       - name: Publish rolling release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete tv-latest --yes --cleanup-tag || true
           gh release create tv-latest streamhouse-tv.apk \
             --prerelease \
-            --title "StreamHouse TV (latest build)" \
-            --notes "Android TV app built from ${GITHUB_SHA:0:7}.
+            --title "StreamHouse for Android TV and phones (latest build)" \
+            --notes "Built from ${GITHUB_SHA:0:7}. StreamHouse runs inside the app, so no computer is needed.
 
-          Install it on the TV with the Downloader app using the direct link to
-          \`streamhouse-tv.apk\` on this release, or with
-          \`adb install streamhouse-tv.apk\`."
+          Install it on a TV with the Downloader app using the direct link to
+          \`streamhouse-tv.apk\` on this release; on a phone, open that link and
+          allow the install; or use \`adb install streamhouse-tv.apk\`."
