@@ -23,6 +23,10 @@ the sofa — see [On your phone](streamhouse#on-your-phone).
 cd streamhouse && npm install && npm start     # http://127.0.0.1:11471
 ```
 
+On Windows, double-click `streamhouse\windows\Create Desktop Shortcut.cmd` once and
+start it from the desktop icon instead — see
+[On Windows](streamhouse#on-windows).
+
 ## [`pcremote/`](pcremote) — your phone as a PC remote
 
 Trackpad, keyboard, media keys and power control from the phone's browser, plus

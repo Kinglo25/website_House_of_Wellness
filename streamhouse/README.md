@@ -45,6 +45,46 @@ Settings live in `~/.streamhouse/` (config, add-on list, library, watch history 
 a backup copy of every `.torrent` in your list). Media goes to
 `~/Downloads/StreamHouse` by default — change it under **Settings → Download folder**.
 
+## On Windows
+
+Run it from the desktop rather than from a terminal. Double-click this once:
+
+```
+streamhouse\windows\Create Desktop Shortcut.cmd
+```
+
+It puts a **StreamHouse** icon on the desktop and in the Start Menu. From then on
+that icon starts the server and opens the app in a window of its own — Edge's app
+mode, with its own taskbar icon and no tabs or address bar. The console window
+that appears *is* StreamHouse — closing it stops the server.
+
+Install VLC too, once:
+
+```
+winget install VideoLAN.VLC
+```
+
+On this computer **Play opens films in VLC**, which has the sound a browser drops
+on most of them — see [Sound, and VLC](#sound-and-vlc).
+
+The launcher behind the icon ([`windows/StreamHouse.cmd`](windows/StreamHouse.cmd))
+finds Node wherever it was installed, runs `npm install` on the first run, and
+waits for the server to actually answer before opening the window. Double-click
+it while it is already running and it just opens the window instead of starting a
+second copy and failing on the port. If Node is missing it says so and opens
+nodejs.org, rather than flashing up a console window and vanishing.
+
+Everything lives in the same places, under their Windows names:
+
+| | |
+|---|---|
+| Settings, add-ons, library, watch history | `C:\Users\<you>\.streamhouse\` |
+| Downloads | `C:\Users\<you>\Downloads\StreamHouse` |
+
+The Node installer already adds the inbound firewall rule, so **Settings → TV →
+Allow other devices** is normally all that is needed before a phone or TV can
+reach it.
+
 ## Add-ons: where the content comes from
 
 StreamHouse speaks the [Stremio add-on protocol](https://github.com/Stremio/stremio-addon-sdk).
@@ -136,6 +176,36 @@ From there the phone is a perfectly good remote for the TV: browse on the phone,
 **📺 TV** on a stream, pick the TV, and it plays there while the phone keeps the
 transport controls. See below.
 
+## Keeping your place across machines
+
+Watch history belongs to the **server**, not to the browser you watch in. Every
+device that opens the same StreamHouse therefore shares one *Continue watching*
+list: start an episode at the desk, pick it up on the laptop at the same second.
+
+At home that comes for free once **Settings → TV → Allow other devices** is on —
+other machines open `http://192.168.1.x:11471` and are looking at the same library
+and the same progress.
+
+For the same thing from outside the house, put the machines on a
+[Tailscale](https://tailscale.com/download) network. It is free for personal use,
+and unlike port-forwarding it exposes nothing to the public internet:
+
+1. Install Tailscale on the computer running StreamHouse and on each machine you
+   watch from, signing in to all of them with the same account.
+2. On the StreamHouse computer, run `tailscale status` to get its name and
+   address — a stable `100.x.y.z`, and with MagicDNS on, a name like
+   `desktop-abc123` as well.
+3. From any of those machines, anywhere, open `http://desktop-abc123:11471` —
+   or `http://100.x.y.z:11471` if MagicDNS is off.
+
+Neither the name nor the address changes, so bookmark whichever you prefer.
+StreamHouse has **no password** (see [Notes](#notes)), which is precisely why a
+private tailnet is the right way to reach it from outside — do not port-forward
+it instead.
+
+The one thing this model needs is that the computer running StreamHouse is
+switched on.
+
 ## Watching on your TV
 
 Three ways, depending on what your TV can do. All of them need the app reachable
@@ -223,9 +293,27 @@ page. If the stream it came from has since gone (a cached stream cleaned up, a s
 dried up), the player offers **Pick another stream**: choose a new one and it carries on
 from the same position. Titles watched to the end drop off the list by themselves.
 
-Browsers only decode some formats (MP4/WebM reliably; MKV and HEVC often not). If a file
-will not play, hit **Open elsewhere** — it copies a local URL you can paste straight into
-VLC, MPV or IINA while the download continues:
+### Sound, and VLC
+
+Browsers decode only part of what releases carry: MP4 and WebM reliably, MKV and HEVC
+often not, and AC3, E-AC3 and DTS audio — the soundtrack on most films — not at all, so
+the picture plays in silence. On the computer running StreamHouse, **Play therefore opens
+VLC**, which plays all of it, and the app goes back to browsing. StreamHouse reads VLC's
+position every five seconds, so *Continue watching* works exactly as it does in the page:
+close VLC, and the tile resumes it at the same second. Starting another film closes the
+VLC playing the last one.
+
+VLC is found in its usual install folder, on `PATH`, or wherever `VLC_PATH` points —
+installed while StreamHouse is running, it is picked up on the next Play. Without it,
+films play in the page and a note says why some are silent.
+
+Phones, TVs and other computers always play in the page: VLC would only open on a screen
+nobody is watching. To play in the page on this computer too, set **Settings → Playback**
+to *The browser*.
+
+**Open elsewhere** in the player opens VLC on demand, whatever that setting says. On any
+other device it copies a local URL you can paste straight into VLC, MPV or IINA while the
+download continues:
 
 ```
 http://127.0.0.1:11471/api/stream/<info-hash>/<file-index>
@@ -249,7 +337,9 @@ streamhouse/
 │   ├── network.js      LAN addresses, and whether a TV can actually reach us
 │   ├── mime.js         content types, SRT → WebVTT
 │   ├── paths.js        where state and media live
+│   ├── vlc.js          hands playback to VLC and reads the position back
 │   └── routes/api.js   the REST API + byte-range stream server
+├── windows/            double-click launcher, icon and shortcut maker
 ├── android/            the Android TV app (see android/README.md)
 └── public/
     ├── index.html      app shell
@@ -284,6 +374,8 @@ Useful if you want to drive it from a script or another app:
 | DELETE | `/api/torrents/:id?deleteFiles=1` | |
 | GET | `/api/stream/:id/:fileIdx` | byte-range video |
 | GET | `/api/playback/:id` | what the player needs before it starts |
+| GET | `/api/vlc` | whether VLC is installed, and whether the asking browser is on this computer |
+| POST | `/api/vlc/play` | `{url, title, start, progressKey, meta, explicit}` — open it in VLC here |
 | GET | `/api/catalogs`, `/api/catalog`, `/api/meta/:type/:id` | add-on data |
 | GET | `/api/streams/:type/:id` | add-on streams, parsed and ranked best-first |
 | GET/POST | `/api/config` | settings |

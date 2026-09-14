@@ -9,11 +9,12 @@ export default async function settings ({ container }) {
   const root = container.querySelector('#settings')
   root.append(h('<h1>Settings</h1>'))
 
-  const [config, disk, network, profiles] = await Promise.all([
+  const [config, disk, network, profiles, vlc] = await Promise.all([
     api.getConfig(),
     api.disk().catch(() => null),
     api.network().catch(() => null),
-    api.profiles().catch(() => [])
+    api.profiles().catch(() => []),
+    api.vlc().catch(() => null)
   ])
   const grid = h('<div class="settings-grid"></div>')
   root.append(grid)
@@ -79,9 +80,29 @@ export default async function settings ({ container }) {
     return node
   }
 
+  /* ------------------------------------------------------------ playback */
+
+  grid.append(h('<h2 style="margin-top:8px">Playback</h2>'))
+  const vlcHint = vlc?.available
+    ? `VLC plays every soundtrack; in the browser many films have no sound. Phones, TVs and other
+      computers always play in the page. <span class="mono">${esc(vlc.path)}</span>`
+    : `VLC is not installed, so everything plays in the browser — where many films have no sound.
+      Get it from <a href="https://www.videolan.org/vlc/" target="_blank" rel="noopener">videolan.org</a>
+      and it is picked up straight away.`
+  grid.append(selectSetting({
+    key: 'desktopPlayer',
+    title: 'Play on this computer with',
+    hint: vlcHint,
+    value: config.desktopPlayer,
+    options: [
+      { value: 'vlc', label: 'VLC' },
+      { value: 'browser', label: 'The browser' }
+    ]
+  }))
+
   /* ------------------------------------------------------------ TV */
 
-  grid.append(h('<h2 style="margin-top:8px">TV</h2>'))
+  grid.append(h('<h2 style="margin-top:22px">TV</h2>'))
 
   const tvPanel = h(`
     <div class="setting" style="align-items:flex-start">
