@@ -18,7 +18,7 @@ import { fingerprint, localChanges, remoteWins } from './merge.js'
  * Anything whose value no longer matches its fingerprint was edited here and
  * gets pushed — which catches every edit, whichever part of the app made it. */
 
-export const DEFAULT_SERVER = process.env.STREAMHOUSE_ACCOUNT_SERVER || 'https://streamhouse-account.example.workers.dev'
+export const DEFAULT_SERVER = process.env.STREAMHOUSE_ACCOUNT_SERVER || 'https://streamhouse-account.streamhouse-account.workers.dev'
 
 const KEY_ITERATIONS = 300000
 const PUSH_BATCH = 40          // the account server takes at most 40 changes per request

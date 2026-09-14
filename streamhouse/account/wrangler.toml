@@ -9,5 +9,5 @@ ALLOW_SIGNUPS = "true"
 [[d1_databases]]
 binding = "DB"
 database_name = "streamhouse-account"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "7130ede4-8c08-4d62-9bf2-7f497b2c2751"
 migrations_dir = "migrations"
