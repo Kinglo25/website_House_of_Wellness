@@ -4,7 +4,7 @@ compatibility_date = "2025-09-01"
 
 [vars]
 # Set to "false" and redeploy once everyone in the house has an account.
-ALLOW_SIGNUPS = "true"
+ALLOW_SIGNUPS = "false"
 
 [[d1_databases]]
 binding = "DB"
