@@ -52,7 +52,9 @@ export default async function detail ({ params, container }) {
     const loading = skeletonStrip(1)
     streamsSection.append(loading)
     try {
-      const streams = await api.streams(type, state.videoId)
+      // The runtime lets the server judge whether a file is the right size
+      // for something this long, instead of guessing from resolution alone.
+      const streams = await api.streams(type, state.videoId, meta.runtime)
       loading.remove()
       if (!streams.length) {
         streamsSection.append(h(`

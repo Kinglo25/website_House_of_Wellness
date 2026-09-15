@@ -42,7 +42,7 @@ export const api = {
   catalogs: () => request('/api/catalogs'),
   catalog: params => request(`/api/catalog${qs(params)}`),
   meta: (type, id) => request(`/api/meta/${encodeURIComponent(type)}/${encodeURIComponent(id)}`),
-  streams: (type, id) => request(`/api/streams/${encodeURIComponent(type)}/${encodeURIComponent(id)}`),
+  streams: (type, id, runtime) => request(`/api/streams/${encodeURIComponent(type)}/${encodeURIComponent(id)}${qs({ runtime })}`),
   subtitles: (type, id, extra) => request(`/api/subtitles/${encodeURIComponent(type)}/${encodeURIComponent(id)}${qs(extra)}`),
   search: (q, type) => request(`/api/search${qs({ q, type })}`),
 

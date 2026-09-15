@@ -88,6 +88,22 @@ to the bottom of the list greyed out, with the reason next to it. Nothing is
 hidden: sometimes the bad release is the only release, and that is your call to
 make, not the app's.
 
+Two further checks run when it knows what you asked for:
+
+- **Is this the episode you clicked?** Open S02E05 and a release named S02E06
+  is thrown out by name, however well seeded it is. A season pack of the right
+  season is kept, nudged down a little, since the episode is one file inside it.
+  A release that names no episode at all is left alone — plenty of add-ons
+  return a bare hash with nothing to check.
+- **Is the file the right size for something this long?** Judged in MB per
+  minute against the runtime, so a 22-minute episode and a three-hour film are
+  not held to the same number, and an HEVC encode is not called suspicious for
+  being half the bitrate of an H.264 one. The band is wide on purpose: it
+  catches samples, trailers and mislabelled packs, it does not grade encodes.
+
+A limit you set rejects a release. A heuristic about what a file ought to weigh
+only ever nudges it down the list.
+
 Press ⋯ on any row to see exactly how it was scored and why it sits where it does.
 
 ## Downloading
@@ -256,7 +272,7 @@ Useful if you want to drive it from a script or another app:
 | GET | `/api/stream/:id/:fileIdx` | byte-range video |
 | GET | `/api/playback/:id` | what the player needs before it starts |
 | GET | `/api/catalogs`, `/api/catalog`, `/api/meta/:type/:id` | add-on data |
-| GET | `/api/streams/:type/:id` | add-on streams, parsed and ranked best-first |
+| GET | `/api/streams/:type/:id?runtime=` | add-on streams, parsed and ranked best-first. A `<id>:<season>:<episode>` id gets episode checking; `runtime` (`"57 min"`) gets size checking |
 | GET/POST | `/api/config` | settings |
 | GET | `/api/profiles` | the stream profiles Settings offers |
 | GET | `/api/network` | LAN addresses and whether other devices can reach it |

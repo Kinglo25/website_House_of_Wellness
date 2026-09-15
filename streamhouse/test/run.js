@@ -4,7 +4,7 @@
  * network: every case below is a release name of the kind add-ons actually
  * hand back, asserted against the fields we claim to pull out of it. */
 
-import { parseStream, parseSize, parseSeeders, parseGroup } from '../server/parse.js'
+import { parseStream, parseSize, parseSeeders, parseGroup, parseVideoId, parseRuntime } from '../server/parse.js'
 import { rankStreams, scoreRelease } from '../server/rank.js'
 
 let passed = 0
@@ -107,6 +107,23 @@ console.log('\nSizes, seeders and groups on their own')
   eq('stats are not a group', parseGroup('Movie.2021.1080p-NTb 👤 47 💾 2 GB'), 'NTb')
 }
 
+console.log('\nWhat was asked for: ids and runtimes')
+{
+  eq('series id season', parseVideoId('tt0944947:2:5').season, 2)
+  eq('series id episode', parseVideoId('tt0944947:2:5').episode, 5)
+  eq('a movie id has no episode', parseVideoId('tt0111161').episode, null)
+  eq('a non-numeric tail is not an episode', parseVideoId('tt0944947:extra:bits').season, null)
+  eq('an empty id does not throw', parseVideoId('').season, null)
+
+  eq('"142 min"', parseRuntime('142 min'), 142)
+  eq('"58min"', parseRuntime('58min'), 58)
+  eq('"1h 30min"', parseRuntime('1h 30min'), 90)
+  eq('"2h"', parseRuntime('2h'), 120)
+  eq('a bare number is minutes', parseRuntime('45'), 45)
+  eq('nothing usable', parseRuntime('feature length'), null)
+  eq('undefined', parseRuntime(undefined), null)
+}
+
 /* --------------------------------------------------------------- the ranker */
 
 const STREAMS = [
@@ -174,6 +191,91 @@ console.log('\nRanking: the score can be explained')
 
   const tiny = scoreRelease(parseStream({ title: 'Movie.2021.1080p.WEB-DL-GRP 💾 80 MB' }), {})
   ok('an 80 MB "1080p" file is penalised', tiny.reasons.some(reason => reason.delta < 0), JSON.stringify(tiny.reasons))
+}
+
+console.log('\nSize is judged against how long the thing actually is')
+{
+  // The band is deliberately wide (3-155 MB per minute at 1080p, following
+  // Sonarr): this catches samples, trailers and mislabelled packs, it does not
+  // judge how good an encode is.
+  const at = (title, runtime) => scoreRelease(parseStream({ title }), {}, { runtime })
+  const flagged = (result, text) => result.reasons.some(r => r.label.includes(text))
+
+  ok('40 MB of "1080p" for a 45 min episode is flagged',
+    flagged(at('Show.S01E01.1080p.WEB-DL.H.264-GRP \u{1F4BE} 40 MB', 45), 'small for 45 min'))
+  ok('12 GB for that same 45 min episode is flagged the other way',
+    flagged(at('Show.S01E01.1080p.WEB-DL.H.264-GRP \u{1F4BE} 12 GB', 45), 'large for 45 min'))
+  ok('and a normal 2 GB episode is flagged neither way',
+    !flagged(at('Show.S01E01.1080p.WEB-DL.H.264-GRP \u{1F4BE} 2 GB', 45), 'for 45 min'))
+
+  // The point of the whole change: the same file, judged against two runtimes.
+  const film = 'Movie.2021.1080p.WEB-DL.H.264-GRP \u{1F4BE} 400 MB'
+  ok('400 MB is fine for a 45 min episode', !flagged(at(film, 45), 'small for'))
+  ok('the same 400 MB is small for a 3 hour film', flagged(at(film, 180), 'small for 180 min'))
+
+  // An HEVC encode at half the bitrate is a good file, not a suspicious one.
+  ok('400 MB of H.264 over 180 min is flagged',
+    flagged(at('Movie.2021.1080p.WEB-DL.H.264-GRP \u{1F4BE} 400 MB', 180), 'small for'))
+  ok('the same size in HEVC is not',
+    !flagged(at('Movie.2021.1080p.WEB-DL.x265-GRP \u{1F4BE} 400 MB', 180), 'small for'))
+
+  // The flat floor was the whole check before runtime was available.
+  ok('with no runtime it falls back to a flat floor',
+    scoreRelease(parseStream({ title: 'Movie.1080p.WEB-DL-GRP \u{1F4BE} 80 MB' }), {}, {})
+      .reasons.some(r => r.label === 'small for 1080p'))
+
+  // A pack holds an unknown number of episodes, so per-minute limits say nothing.
+  ok('a season pack skips the size check',
+    !flagged(at('Show.S02.COMPLETE.1080p.WEB-DL-GRP \u{1F4BE} 20 GB', 45), 'for 45 min'))
+
+  // A user-set limit rejects; a heuristic only ever nudges.
+  eq('being large for the runtime is not a rejection',
+    at('Movie.2021.1080p.WEB-DL-GRP \u{1F4BE} 40 GB', 90).rejections.length, 0)
+}
+
+console.log('\nIs it the episode we asked for?')
+{
+  const want = { season: 2, episode: 5 }
+  const scoreFor = title => scoreRelease(parseStream({ title }), {}, want)
+
+  const right = scoreFor('Show.S02E05.1080p.WEB-DL-GRP')
+  eq('the right episode is not rejected', right.rejections.length, 0)
+  ok('and is credited for being verifiable', right.reasons.some(r => r.label === 'confirmed S2E5'), JSON.stringify(right.reasons))
+
+  const wrongEpisode = scoreFor('Show.S02E06.1080p.WEB-DL-GRP')
+  ok('a different episode is rejected', wrongEpisode.rejections[0]?.includes('S2E6'), wrongEpisode.rejections.join())
+  const wrongSeason = scoreFor('Show.S01E05.1080p.WEB-DL-GRP')
+  ok('a different season is rejected', wrongSeason.rejections.length > 0, wrongSeason.rejections.join())
+
+  const rightPack = scoreFor('Show.S02.COMPLETE.1080p.WEB-DL-GRP')
+  eq('the right season pack is kept', rightPack.rejections.length, 0)
+  ok('but nudged down, since the episode is one file inside it', rightPack.reasons.some(r => r.label === 'season pack'))
+  const wrongPack = scoreFor('Show.S04.COMPLETE.1080p.WEB-DL-GRP')
+  ok('a pack of the wrong season is rejected', wrongPack.rejections.length > 0, wrongPack.rejections.join())
+
+  // Plenty of add-ons return a bare hash with no name. Silence is not a mismatch.
+  const silent = scoreFor('Some Unnamed Release 1080p')
+  eq('a release that states no episode is left alone', silent.rejections.length, 0)
+
+  // A movie has nothing to check against.
+  const movie = scoreRelease(parseStream({ title: 'Movie.2021.1080p.WEB-DL-GRP' }), {}, { season: null, episode: null })
+  eq('a movie is never episode-checked', movie.rejections.length, 0)
+
+  // And the whole check only runs when the caller says what it wants.
+  const noContext = scoreRelease(parseStream({ title: 'Show.S02E06.1080p.WEB-DL-GRP' }), {}, {})
+  eq('no context means no episode check', noContext.rejections.length, 0)
+}
+
+console.log('\nRanking end to end with context')
+{
+  const episodeStreams = [
+    { id: 'wrong', title: 'Show.S02E06.1080p.WEB-DL.H.264-GRP\n\u{1F464} 400' },
+    { id: 'right', title: 'Show.S02E05.720p.WEB-DL.H.264-GRP\n\u{1F464} 12' }
+  ]
+  const ranked = rankStreams(episodeStreams, { streamProfile: 'balanced' }, { season: 2, episode: 5, runtime: 45 })
+  eq('the right episode wins even against a better-seeded wrong one', ranked[0].id, 'right')
+  eq('and it is the marked pick', ranked.find(stream => stream.best)?.id, 'right')
+  ok('the wrong episode is still listed, with the reason', ranked.at(-1).rejections[0]?.includes('not the S2E5'))
 }
 
 /* -------------------------------------------------------------------- done */

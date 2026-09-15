@@ -47,9 +47,27 @@ export const PROFILES = {
 export const RESOLUTION_RANK = { '2160p': 4, '1080p': 3, '720p': 2, '576p': 1, '480p': 1 }
 export const SOURCE_RANK = { remux: 5, bluray: 4, 'web-dl': 3, webrip: 2, hdrip: 2, hdtv: 1, dvd: 1 }
 
-// Below these a file is a trailer, a sample or a bad re-encode, whatever its
-// name claims. Deliberately generous — a 22-minute episode is a small file.
-const SIZE_FLOOR = { '2160p': 900 * 1024 ** 2, '1080p': 250 * 1024 ** 2, '720p': 120 * 1024 ** 2 }
+/* How big a file of a given quality should be, in MB per minute of runtime —
+ * the same shape as Sonarr's quality definitions, because a flat floor cannot
+ * tell a 22-minute sitcom from a three-hour film.
+ *
+ * The maximums are Sonarr's; the minimums are lower. Sonarr's were set against
+ * x264, and an HEVC encode at half the bitrate is a perfectly good file, not a
+ * suspicious one. EFFICIENT_CODEC_FACTOR drops them further again for the
+ * codecs that really do deliver that. */
+const SIZE_PER_MINUTE = {
+  '2160p': { min: 12, max: 200 },
+  '1080p': { min: 3, max: 155 },
+  '720p': { min: 2, max: 130 },
+  '576p': { min: 1, max: 100 },
+  '480p': { min: 1, max: 100 }
+}
+const MB = 1024 ** 2
+const EFFICIENT_CODECS = new Set(['hevc', 'av1'])
+const EFFICIENT_CODEC_FACTOR = 0.6
+
+// Fallback for when no runtime is known: a flat floor, deliberately generous.
+const SIZE_FLOOR = { '2160p': 900 * MB, '1080p': 250 * MB, '720p': 120 * MB }
 
 const RESOLUTION_ORDER = ['480p', '576p', '720p', '1080p', '2160p']
 
@@ -65,10 +83,17 @@ export function normalizeProfile (settings = {}) {
   }
 }
 
-/* Score one parsed release. Returns the score plus the reasons behind it, so
- * the UI can answer "why is this one at the top?" instead of asking for trust. */
-export function scoreRelease (quality, options = {}) {
-  const { weights, maxResolution, minSeeders, maxStreamSize } = normalizeProfile(options)
+/* Score one parsed release.
+ *
+ * `settings` is the user's profile; `context` is what we know about the thing
+ * they actually asked for — the episode, and how many minutes long it is.
+ * Both parts of the context are optional: without them the checks that need
+ * them are skipped rather than guessed at.
+ *
+ * Returns the score plus the reasons behind it, so the UI can answer "why is
+ * this one at the top?" instead of asking for trust. */
+export function scoreRelease (quality, settings = {}, context = {}) {
+  const { weights, maxResolution, minSeeders, maxStreamSize } = normalizeProfile(settings)
   const reasons = []
   const rejections = []
   let score = 0
@@ -113,14 +138,50 @@ export function scoreRelease (quality, options = {}) {
     add(Math.round(Math.log2(Math.min(quality.seeders, 500) + 1) * 45), `${quality.seeders} seeders`)
   }
 
+  /* ------------------------------------------- is it the episode we asked for */
+
+  // Only ever a check, never a guess: a release that states nothing is left
+  // alone, because plenty of add-ons return a bare hash with no name at all.
+  const want = context.season != null && context.episode != null ? context : null
+  if (want && quality.season != null) {
+    if (quality.seasonPack) {
+      if (quality.season !== want.season) {
+        rejections.push(`a season ${quality.season} pack, not the season ${want.season} you asked for`)
+      } else {
+        add(-60, 'season pack')
+      }
+    } else if (quality.episode != null) {
+      if (quality.season === want.season && quality.episode === want.episode) {
+        add(80, `confirmed S${want.season}E${want.episode}`)
+      } else {
+        rejections.push(`this is S${quality.season}E${quality.episode}, not the S${want.season}E${want.episode} you asked for`)
+      }
+    }
+  }
+
   /* ---------------------------------------------------------------- size */
 
   if (quality.size) {
+    // A limit the user set is a rejection. A heuristic about what a file of
+    // this length ought to weigh is only ever a nudge.
     if (maxStreamSize && quality.size > maxStreamSize * 1024 ** 3) {
       rejections.push(`larger than your ${maxStreamSize} GB limit`)
     }
-    const floor = SIZE_FLOOR[quality.resolution]
-    if (floor && quality.size < floor) add(-200, `small for ${quality.resolution}`)
+
+    const perMinute = SIZE_PER_MINUTE[quality.resolution]
+    const runtime = Number(context.runtime) || 0
+
+    // A season pack holds an unknown number of episodes, so per-minute limits
+    // say nothing about it.
+    if (perMinute && runtime > 0 && !quality.seasonPack) {
+      const factor = EFFICIENT_CODECS.has(quality.codec) ? EFFICIENT_CODEC_FACTOR : 1
+      const floor = perMinute.min * factor * MB * runtime
+      const ceiling = perMinute.max * MB * runtime
+      if (quality.size < floor) add(-200, `small for ${runtime} min of ${quality.resolution}`)
+      else if (quality.size > ceiling) add(-150, `large for ${runtime} min of ${quality.resolution}`)
+    } else if (SIZE_FLOOR[quality.resolution] && quality.size < SIZE_FLOOR[quality.resolution]) {
+      add(-200, `small for ${quality.resolution}`)
+    }
   }
 
   /* ------------------------------------------------------------- revision */
@@ -134,16 +195,21 @@ export function scoreRelease (quality, options = {}) {
 
 /* Rank a list of annotated add-on streams, best first.
  *
+ * `context` is what the caller knows about the title being watched:
+ * `{ season, episode, runtime }`. It is what lets the ranker check a release
+ * is the episode that was asked for, and judge its size against how long the
+ * thing actually is. All three are optional.
+ *
  * Nothing is hidden: rejected releases sink to the bottom carrying the reason
  * they were rejected, because the add-on list is sometimes all you have and a
  * cam rip you chose knowingly beats an empty page.
  */
-export function rankStreams (streams = [], settings = {}) {
+export function rankStreams (streams = [], settings = {}, context = {}) {
   const options = normalizeProfile(settings)
 
   const scored = streams.map(stream => {
     const quality = parseStream(stream)
-    const { score, reasons, rejections } = scoreRelease(quality, settings)
+    const { score, reasons, rejections } = scoreRelease(quality, settings, context)
     return {
       ...stream,
       quality: {

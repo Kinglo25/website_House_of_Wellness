@@ -195,6 +195,33 @@ export function parseStream (stream = {}) {
   }
 }
 
+/* -------------------------------------------------------- what was asked for */
+
+/* Stremio addresses an episode as "<series id>:<season>:<episode>", so the id
+ * the UI already passes tells us which episode the streams are supposed to be.
+ * Returns nulls for a movie id, which means "nothing to check against". */
+export function parseVideoId (id) {
+  const parts = String(id || '').split(':')
+  if (parts.length < 3) return { season: null, episode: null }
+  const season = Number(parts[parts.length - 2])
+  const episode = Number(parts[parts.length - 1])
+  if (!Number.isInteger(season) || !Number.isInteger(episode)) return { season: null, episode: null }
+  return { season, episode }
+}
+
+/* Add-on metadata states runtime as free text: "142 min", "58min", "1h 30min".
+ * Minutes, or null when it says nothing usable. */
+export function parseRuntime (text) {
+  const value = String(text || '')
+  const hoursAndMinutes = /(\d+)\s*h(?:ours?)?[\s.]*(\d+)?\s*m?/i.exec(value)
+  if (hoursAndMinutes) return Number(hoursAndMinutes[1]) * 60 + Number(hoursAndMinutes[2] || 0)
+  const minutes = /(\d+)\s*(?:min|m\b)/i.exec(value)
+  if (minutes) return Number(minutes[1])
+  const bare = /^\s*(\d{1,4})\s*$/.exec(value)
+  if (bare) return Number(bare[1])
+  return null
+}
+
 /* A short human label: "1080p WEB-DL · H.264". Used for the badge row. */
 export function qualityLabel (quality) {
   return [quality.resolution, SOURCE_LABELS[quality.source] || quality.source]

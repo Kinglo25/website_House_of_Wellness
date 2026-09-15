@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { config } from '../config.js'
 import { addons, clearAddonCache } from '../addons.js'
+import { parseVideoId, parseRuntime } from '../parse.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { rankStreams, PROFILES } from '../rank.js'
 import { JsonStore } from '../store.js'
@@ -92,7 +93,14 @@ router.get('/streams/:type/:id', wrap(async (req, res) => {
   })
   // Then parse the release names and sort best-first for the profile in
   // Settings, so the top row is the one worth pressing Play on.
-  res.json(rankStreams(annotated, config.get()))
+  //
+  // The id says which episode was asked for, which is what lets the ranker
+  // throw out a release for a different one. Runtime comes from the caller
+  // (the title page already has it) and decides what a file of this length
+  // ought to weigh; without it the size check falls back to a flat floor.
+  const { season, episode } = parseVideoId(req.params.id)
+  const runtime = parseRuntime(req.query.runtime)
+  res.json(rankStreams(annotated, config.get(), { season, episode, runtime }))
 }))
 
 router.get('/subtitles/:type/:id', wrap(async (req, res) => {
