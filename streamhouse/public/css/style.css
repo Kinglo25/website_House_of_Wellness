@@ -156,6 +156,7 @@ h3 { font-size: 15px; margin: 0; }
 }
 .chip.active { background: var(--accent); border-color: transparent; color: #fff; }
 .chip.static { cursor: default; color: var(--muted); }
+.chip.warn { color: var(--amber); border-color: rgba(242, 181, 68, 0.35); }
 
 input.field, select.field, textarea.field {
   background: var(--surface); border: 1px solid var(--border);

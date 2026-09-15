@@ -46,7 +46,7 @@ router.get('/profiles', (req, res) => {
 
 router.get('/addons', wrap(async (req, res) => {
   if (req.query.refresh) await addons.refreshManifests()
-  res.json(addons.list())
+  res.json(addons.describe())
 }))
 
 router.post('/addons', wrap(async (req, res) => {

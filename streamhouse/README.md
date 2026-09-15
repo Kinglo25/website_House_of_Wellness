@@ -63,6 +63,15 @@ https://example.com/manifest.json
 Add-ons higher in the list win: their streams are listed first, and their metadata is
 preferred. Use the ↑ button to reorder, or Disable to keep one installed but inactive.
 
+### When an add-on stops answering
+
+An add-on that has gone away would otherwise cost a 25 second timeout on every
+single lookup, for ever, without saying so. Instead StreamHouse stands further
+and further back from one that keeps failing — a minute, then five, fifteen,
+thirty, an hour, up to a day — and the Add-ons page says which one is being
+skipped and for how long. One failure costs nothing; the first success wipes
+the slate. Press **Refresh** to try everything again immediately.
+
 **You choose your own sources, and you are responsible for them.** Install add-ons you
 have the right to use, and download only material you are allowed to download.
 
@@ -249,6 +258,7 @@ streamhouse/
 │   ├── addons.js       Stremio add-on protocol client (catalog/meta/stream/subtitles)
 │   ├── parse.js        release names → resolution, source, codec, group, seeders…
 │   ├── rank.js         quality profiles: score the parsed releases, best first
+│   ├── backoff.js      escalating backoff for add-ons that keep failing
 │   ├── watchdog.js     gives up on stalled grabs and retries the next best
 │   ├── blocklist.js    releases that did not work out, so they stop coming back
 │   ├── torrent.js      the BitTorrent engine: add, select, pause, stats, cleanup

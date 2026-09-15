@@ -12,6 +12,7 @@ import { blocklist } from '../server/blocklist.js'
 import { engine } from '../server/torrent.js'
 import { checkForStalled, giveUp, stopWatchdog } from '../server/watchdog.js'
 import { config } from '../server/config.js'
+import { FailureTracker, BACKOFF_SECONDS } from '../server/backoff.js'
 
 let passed = 0
 let failed = 0
@@ -431,6 +432,56 @@ console.log('\nThe watchdog: giving up keeps your files')
   ok('one minute is singular', giveUp({ infoHash: hash, name: record.name }, { minutes: 1 }).error.startsWith('No data for 1 minute.'),
     giveUp({ infoHash: hash, name: record.name }, { minutes: 1 }).error)
   blocklist.clear()
+}
+
+console.log('\nStanding back from an add-on that keeps failing')
+{
+  const SECOND = 1000
+  const tracker = new FailureTracker()
+  const id = 'https://example.com/manifest.json'
+  const t0 = 5_000_000
+
+  eq('something that has never failed is available', tracker.isAvailable(id, t0), true)
+  eq('and has no status to report', tracker.status(id, t0), null)
+
+  // One blip costs nothing: the first period is zero on purpose.
+  tracker.recordFailure(id, 'ETIMEDOUT', t0)
+  eq('one failure does not skip it', tracker.isAvailable(id, t0), true)
+  eq('but it is now on the record', tracker.status(id, t0).failures, 1)
+
+  tracker.recordFailure(id, 'ETIMEDOUT', t0)
+  eq('a second failure stands back a minute', tracker.isAvailable(id, t0), false)
+  eq('and it is available again after that minute', tracker.isAvailable(id, t0 + 61 * SECOND), true)
+
+  tracker.recordFailure(id, 'ETIMEDOUT', t0)
+  eq('a third stands back five minutes', tracker.isAvailable(id, t0 + 4 * 60 * SECOND), false)
+  eq('then it is back', tracker.isAvailable(id, t0 + 6 * 60 * SECOND), true)
+
+  // Success wipes the slate, so a recovered add-on is not punished for history.
+  tracker.recordSuccess(id)
+  eq('success clears the backoff', tracker.status(id, t0), null)
+  tracker.recordFailure(id, 'ETIMEDOUT', t0)
+  eq('and the ladder starts from the bottom again', tracker.isAvailable(id, t0), true)
+
+  // It must not escalate past the end of the ladder.
+  const far = new FailureTracker()
+  for (let i = 0; i < BACKOFF_SECONDS.length + 5; i += 1) far.recordFailure('x', 'nope', t0)
+  const capped = far.status('x', t0)
+  eq('the wait is capped at the longest period', Math.round(capped.retryInMs / 1000), BACKOFF_SECONDS.at(-1))
+  eq('though the failure count keeps climbing', capped.failures, BACKOFF_SECONDS.length + 5)
+
+  // What the UI reads.
+  const reporting = new FailureTracker()
+  reporting.recordFailure(id, 'HTTP 502', t0)
+  reporting.recordFailure(id, 'HTTP 502', t0 + 30 * 60 * SECOND)
+  // Half a minute into the one-minute backoff the second failure bought.
+  const status = reporting.status(id, t0 + 30 * 60 * SECOND + 30 * SECOND)
+  eq('it reports how long it has been failing', Math.round(status.failingForMs / 60000), 31)
+  eq('and the last thing that went wrong', status.lastError, 'HTTP 502')
+  ok('and that it is currently being skipped', status.skipped)
+
+  eq('an empty id is ignored', tracker.recordFailure('', 'x'), null)
+  eq('and always counts as available', tracker.isAvailable(''), true)
 }
 
 /* -------------------------------------------------------------------- done */

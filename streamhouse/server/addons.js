@@ -1,4 +1,5 @@
 import { JsonStore } from './store.js'
+import { FailureTracker } from './backoff.js'
 
 // A client for the Stremio add-on protocol.
 //
@@ -115,15 +116,55 @@ class AddonManager {
   constructor () {
     this.store = new JsonStore('addons', DEFAULT_ADDONS)
     if (!this.store.get().length) this.store.set(structuredClone(DEFAULT_ADDONS))
+    this.failures = new FailureTracker()
     this.refreshManifests()
   }
 
+  // The live records. Callers mutate these in place (toggle, reorder), so this
+  // must never hand back copies.
   list () {
     return this.store.get()
   }
 
+  /* The same list decorated with how each add-on is behaving, for the API.
+   * Copies, precisely because the status is transient and must never be
+   * written back to disk with the rest of the record. */
+  describe () {
+    return this.list().map(addon => ({ ...addon, status: this.failures.status(this.keyOf(addon)) }))
+  }
+
+  // Failures are tracked per transport URL: it is the one identifier an add-on
+  // has before its manifest has ever loaded.
+  keyOf (addon) {
+    return addon?.transportUrl || ''
+  }
+
   enabled () {
     return this.list().filter(addon => addon.enabled !== false && addon.manifest)
+  }
+
+  /* Enabled, and not currently being stood back from. This is what every
+   * method that actually makes a request should ask for: an add-on that has
+   * gone away stops costing a timeout on every lookup. */
+  available () {
+    return this.enabled().filter(addon => this.failures.isAvailable(this.keyOf(addon)))
+  }
+
+  // Wrap one add-on request so its outcome feeds the backoff.
+  async attempt (addon, work) {
+    const key = this.keyOf(addon)
+    try {
+      const result = await work()
+      this.failures.recordSuccess(key)
+      return result
+    } catch (err) {
+      const entry = this.failures.recordFailure(key, err.message)
+      if (entry.disabledUntil > Date.now()) {
+        const minutes = Math.round((entry.disabledUntil - Date.now()) / 60000)
+        console.warn(`[addons] ${addon.manifest?.name || key} failed ${entry.failures} times — skipping it for ${minutes || 1} min`)
+      }
+      throw err
+    }
   }
 
   find (id) {
@@ -138,8 +179,12 @@ class AddonManager {
         const manifest = await getJson(addon.transportUrl, { useCache: false })
         addon.manifest = manifest
         addon.error = null
+        // Asking for a refresh by hand is an explicit "try it again now", so a
+        // manifest that loads clears whatever backoff had built up.
+        this.failures.recordSuccess(this.keyOf(addon))
       } catch (err) {
         addon.error = err.message
+        this.failures.recordFailure(this.keyOf(addon), err.message)
       }
     }))
     this.store.save()
@@ -219,21 +264,25 @@ class AddonManager {
   async catalog ({ addonId, type, id, skip = 0, genre = '', search = '' }) {
     const addon = this.find(addonId)
     if (!addon?.manifest) throw new Error('Add-on not found')
+    const status = this.failures.status(this.keyOf(addon))
+    if (status?.skipped) {
+      throw new Error(`${addon.manifest.name} is not responding (${status.lastError}). Trying again in ${Math.max(1, Math.round(status.retryInMs / 60000))} min.`)
+    }
     const extra = {}
     if (Number(skip) > 0) extra.skip = Number(skip)
     if (genre) extra.genre = genre
     if (search) extra.search = search
     const url = resourceUrl(addon.transportUrl, 'catalog', type, id, extra)
-    const json = await getJson(url)
+    const json = await this.attempt(addon, () => getJson(url))
     return (json?.metas || []).map(meta => ({ ...meta, addonId: addon.manifest.id }))
   }
 
   // Ask every add-on that claims to know about this id, first answer wins.
   async meta (type, id) {
-    const candidates = this.enabled().filter(addon => supports(addon.manifest, 'meta', type, id))
+    const candidates = this.available().filter(addon => supports(addon.manifest, 'meta', type, id))
     for (const addon of candidates) {
       try {
-        const json = await getJson(resourceUrl(addon.transportUrl, 'meta', type, id))
+        const json = await this.attempt(addon, () => getJson(resourceUrl(addon.transportUrl, 'meta', type, id)))
         if (json?.meta) return { ...json.meta, addonId: addon.manifest.id }
       } catch (err) {
         console.warn(`[addons] meta failed on ${addon.manifest.id}: ${err.message}`)
@@ -245,9 +294,9 @@ class AddonManager {
   // Streams are merged across every add-on, in the order the add-ons are
   // installed, so the user's preferred source stays on top.
   async streams (type, id) {
-    const candidates = this.enabled().filter(addon => supports(addon.manifest, 'stream', type, id))
+    const candidates = this.available().filter(addon => supports(addon.manifest, 'stream', type, id))
     const results = await Promise.allSettled(candidates.map(async addon => {
-      const json = await getJson(resourceUrl(addon.transportUrl, 'stream', type, id), { timeout: 25000 })
+      const json = await this.attempt(addon, () => getJson(resourceUrl(addon.transportUrl, 'stream', type, id), { timeout: 25000 }))
       return (json?.streams || []).map(stream => ({
         ...stream,
         addonId: addon.manifest.id,
@@ -263,9 +312,9 @@ class AddonManager {
   }
 
   async subtitles (type, id, extra = {}) {
-    const candidates = this.enabled().filter(addon => supports(addon.manifest, 'subtitles', type, id))
+    const candidates = this.available().filter(addon => supports(addon.manifest, 'subtitles', type, id))
     const results = await Promise.allSettled(candidates.map(async addon => {
-      const json = await getJson(resourceUrl(addon.transportUrl, 'subtitles', type, id, extra))
+      const json = await this.attempt(addon, () => getJson(resourceUrl(addon.transportUrl, 'subtitles', type, id, extra)))
       return (json?.subtitles || []).map(sub => ({ ...sub, addonName: addon.manifest.name }))
     }))
     return results.filter(r => r.status === 'fulfilled').flatMap(r => r.value)

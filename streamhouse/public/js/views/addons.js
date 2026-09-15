@@ -77,6 +77,7 @@ export default async function addonsView ({ container }) {
             <div class="row"><b>${esc(manifest?.name || addon.transportUrl)}</b>
               <span class="tiny muted">v${esc(manifest?.version || '?')}</span>
               ${addon.enabled === false ? '<span class="chip static tiny">disabled</span>' : ''}
+              ${addon.status?.skipped ? '<span class="chip static tiny warn">being skipped</span>' : ''}
             </div>
             <div class="tiny muted" style="margin-top:4px">${esc(manifest?.description || '')}</div>
             <div class="types">
@@ -84,6 +85,7 @@ export default async function addonsView ({ container }) {
               ${(manifest?.types || []).map(type => `<span class="chip static tiny">${esc(type)}</span>`).join('')}
             </div>
             ${addon.error ? `<div class="tiny" style="color:#ff9ba4;margin-top:6px">${esc(addon.error)}</div>` : ''}
+            ${addon.status ? `<div class="tiny" style="color:#f2b544;margin-top:6px">${esc(describeStatus(addon.status))}</div>` : ''}
             <div class="tiny muted mono" style="margin-top:6px;word-break:break-all">${esc(addon.transportUrl)}</div>
           </div>
           <div class="actions row">
@@ -128,4 +130,15 @@ export default async function addonsView ({ container }) {
   }
 
   await draw()
+}
+
+/* An add-on that keeps failing is stood back from for longer and longer, so a
+ * dead one stops costing a 25 second timeout on every lookup. Say so plainly:
+ * otherwise its catalogues and streams just quietly stop appearing. */
+function describeStatus (status) {
+  const minutesFailing = Math.round(status.failingForMs / 60000)
+  const failing = `Failed ${status.failures} time${status.failures === 1 ? '' : 's'}${minutesFailing >= 1 ? ` over ${minutesFailing} min` : ''}`
+  if (!status.skipped) return `${failing}. ${status.lastError || ''}`.trim()
+  const retry = Math.max(1, Math.round(status.retryInMs / 60000))
+  return `${failing} — skipped for ${retry} min so it stops holding up everything else.`
 }
