@@ -129,6 +129,27 @@ The Downloads page gives you what a torrent client gives you:
 Downloads survive a restart: the app keeps each torrent's metadata, re-checks the data
 already on disk and picks up where it left off — even with no peers around.
 
+## When a download goes nowhere
+
+A torrent with no peers sits at 0% forever. Nothing is wrong, nothing is
+reported, and you find out when you sit down to watch it.
+
+StreamHouse watches its own queue. A grab that has taken no data at all for
+**ten minutes** (Settings → Stalled downloads) is given up on:
+
+- it is **paused and labelled `stalled`**, with the reason on the row
+- the release is **blocked**, so neither the stream list nor a later retry
+  offers you that same dead torrent again
+- if **Try the next best release** is on, the add-ons are asked again and the
+  next release your profile would have picked starts instead, marked
+  *"swapped in after an earlier grab stalled"*
+
+**Your files are never deleted.** A stalled download keeps everything it
+managed to fetch and stays in the list until you say otherwise — press
+**↻ Try again** to unblock and retry it, or Delete to be rid of it. The
+blocklist ages entries out after a month, because a swarm that was empty in
+March may be busy in June.
+
 ## Watching on your TV
 
 Three ways, depending on what your TV can do. All of them need the app reachable
@@ -228,6 +249,8 @@ streamhouse/
 │   ├── addons.js       Stremio add-on protocol client (catalog/meta/stream/subtitles)
 │   ├── parse.js        release names → resolution, source, codec, group, seeders…
 │   ├── rank.js         quality profiles: score the parsed releases, best first
+│   ├── watchdog.js     gives up on stalled grabs and retries the next best
+│   ├── blocklist.js    releases that did not work out, so they stop coming back
 │   ├── torrent.js      the BitTorrent engine: add, select, pause, stats, cleanup
 │   ├── store.js        small atomic JSON store
 │   ├── cast.js         DLNA/UPnP: SSDP discovery + AVTransport control
@@ -254,8 +277,9 @@ streamhouse/
 
 No build step and no frontend framework — the browser loads the ES modules directly, so
 editing a file and reloading is the whole dev loop. `npm run dev` restarts the server on
-change, and `npm test` checks the parser and the ranker against real-world release
-names (no server and no network needed).
+change, and `npm test` checks the parser, the ranker and the watchdog (no server
+and no network needed — it runs against a throwaway data directory, so it never
+touches your real `~/.streamhouse`).
 
 ## API
 
@@ -273,6 +297,8 @@ Useful if you want to drive it from a script or another app:
 | GET | `/api/playback/:id` | what the player needs before it starts |
 | GET | `/api/catalogs`, `/api/catalog`, `/api/meta/:type/:id` | add-on data |
 | GET | `/api/streams/:type/:id?runtime=` | add-on streams, parsed and ranked best-first. A `<id>:<season>:<episode>` id gets episode checking; `runtime` (`"57 min"`) gets size checking |
+| GET | `/api/blocklist` | releases that stalled and are no longer offered |
+| DELETE | `/api/blocklist/:infoHash`｜`/api/blocklist` | unblock one, or all |
 | GET/POST | `/api/config` | settings |
 | GET | `/api/profiles` | the stream profiles Settings offers |
 | GET | `/api/network` | LAN addresses and whether other devices can reach it |

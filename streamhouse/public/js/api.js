@@ -82,6 +82,10 @@ export const api = {
   castControl: (id, action, value = null) => request(`/api/cast/${encodeURIComponent(id)}/control`, { method: 'POST', body: { action, value } }),
   castStatus: id => request(`/api/cast/${encodeURIComponent(id)}/status`),
 
+  blocklist: () => request('/api/blocklist'),
+  unblock: infoHash => request(`/api/blocklist/${encodeURIComponent(infoHash)}`, { method: 'DELETE' }),
+  clearBlocklist: () => request('/api/blocklist', { method: 'DELETE' }),
+
   disk: () => request('/api/disk'),
   clearCache: () => request('/api/cache/clear', { method: 'POST' })
 }

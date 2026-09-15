@@ -4,6 +4,7 @@ import path from 'path'
 import { config } from '../config.js'
 import { addons, clearAddonCache } from '../addons.js'
 import { parseVideoId, parseRuntime } from '../parse.js'
+import { blocklist } from '../blocklist.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { rankStreams, PROFILES } from '../rank.js'
 import { JsonStore } from '../store.js'
@@ -100,7 +101,8 @@ router.get('/streams/:type/:id', wrap(async (req, res) => {
   // ought to weigh; without it the size check falls back to a flat floor.
   const { season, episode } = parseVideoId(req.params.id)
   const runtime = parseRuntime(req.query.runtime)
-  res.json(rankStreams(annotated, config.get(), { season, episode, runtime }))
+  const blocked = blocklist.hashes()
+  res.json(rankStreams(annotated, config.get(), { season, episode, runtime, blocked }))
 }))
 
 router.get('/subtitles/:type/:id', wrap(async (req, res) => {
@@ -186,7 +188,13 @@ router.post('/torrents/file', express.raw({ type: '*/*', limit: '10mb' }), (req,
 })
 
 router.post('/torrents/:id/pause', (req, res) => res.json(engine.stats(engine.pause(req.params.id))))
-router.post('/torrents/:id/resume', (req, res) => res.json(engine.stats(engine.resume(req.params.id))))
+
+router.post('/torrents/:id/resume', (req, res) => {
+  // Resuming a grab the watchdog gave up on is an explicit "try this one
+  // anyway", so it stops being blocked.
+  blocklist.remove(req.params.id)
+  res.json(engine.stats(engine.resume(req.params.id)))
+})
 
 router.post('/torrents/:id/files', (req, res) => {
   res.json(engine.stats(engine.selectFiles(req.params.id, req.body?.indices || [])))
@@ -380,6 +388,16 @@ router.post('/cast/:id/control', wrap(async (req, res) => {
 router.get('/cast/:id/status', wrap(async (req, res) => {
   res.json(await cast.statusAnywhere(req.params.id))
 }))
+
+/* --------------------------------------------------------------- blocklist */
+
+router.get('/blocklist', (req, res) => res.json(blocklist.list()))
+
+router.delete('/blocklist/:infoHash', (req, res) => {
+  res.json({ removed: blocklist.remove(req.params.infoHash) })
+})
+
+router.delete('/blocklist', (req, res) => res.json({ removed: blocklist.clear() }))
 
 /* ------------------------------------------------------------ maintenance */
 

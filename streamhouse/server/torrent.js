@@ -147,7 +147,7 @@ class TorrentEngine {
   // Add a magnet / info-hash / .torrent buffer and start it.
   //   mode 'download' -> keep the file on disk, qBittorrent style
   //   mode 'stream'   -> same engine, but only the file being watched
-  add ({ magnet, infoHash, torrentFile, sources = [], fileIdx = null, mode = 'download', meta = {}, name = '', paused = false }) {
+  add ({ magnet, infoHash, torrentFile, sources = [], fileIdx = null, mode = 'download', meta = {}, name = '', paused = false, retryOf = null }) {
     this.start()
     const settings = config.get()
 
@@ -195,6 +195,9 @@ class TorrentEngine {
       completedAt: null,
       status: paused ? 'paused' : 'connecting',
       meta,
+      // The release this one replaced, when the watchdog swapped in a new
+      // grab after the old one stalled. Purely so the UI can say why.
+      retryOf,
       error: null
     }
 
@@ -422,7 +425,9 @@ class TorrentEngine {
 
     return {
       ...record,
-      status: torrent?.paused ? 'paused' : record.status,
+      // A stalled torrent is paused, but "stalled" is the more useful word for
+      // it — the user did not pause this one, the watchdog gave up on it.
+      status: record.status === 'stalled' ? 'stalled' : (torrent?.paused ? 'paused' : record.status),
       ready: Boolean(torrent?.ready),
       infoHash: torrent?.infoHash || record.id,
       name: record.meta?.title || torrent?.name || record.name,

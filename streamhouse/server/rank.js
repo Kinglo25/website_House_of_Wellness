@@ -196,9 +196,10 @@ export function scoreRelease (quality, settings = {}, context = {}) {
 /* Rank a list of annotated add-on streams, best first.
  *
  * `context` is what the caller knows about the title being watched:
- * `{ season, episode, runtime }`. It is what lets the ranker check a release
- * is the episode that was asked for, and judge its size against how long the
- * thing actually is. All three are optional.
+ * `{ season, episode, runtime, blocked }`. It is what lets the ranker check a
+ * release is the episode that was asked for, judge its size against how long
+ * the thing actually is, and drop releases that already failed once. All of
+ * it is optional.
  *
  * Nothing is hidden: rejected releases sink to the bottom carrying the reason
  * they were rejected, because the add-on list is sometimes all you have and a
@@ -207,9 +208,16 @@ export function scoreRelease (quality, settings = {}, context = {}) {
 export function rankStreams (streams = [], settings = {}, context = {}) {
   const options = normalizeProfile(settings)
 
+  // Releases that already failed once. Checked here rather than in
+  // scoreRelease because it is a property of the stream, not of its name.
+  const blocked = new Set((context.blocked || []).map(hash => String(hash).toLowerCase()))
+
   const scored = streams.map(stream => {
     const quality = parseStream(stream)
     const { score, reasons, rejections } = scoreRelease(quality, settings, context)
+    if (stream.infoHash && blocked.has(String(stream.infoHash).toLowerCase())) {
+      rejections.push('you blocked this release after it stalled')
+    }
     return {
       ...stream,
       quality: {

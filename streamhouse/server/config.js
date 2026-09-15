@@ -25,6 +25,10 @@ const DEFAULTS = {
   minSeeders: 0,              // 0 = accept any; below this a release sinks to the bottom
   maxStreamSize: 0,           // GB, 0 = no limit
 
+  // queue watchdog
+  stallMinutes: 10,          // no data for this long and a grab is given up on
+  autoRetryStalled: true,    // then look for the next best release automatically
+
   // player
   playerVolume: 1,
   autoPlayNextEpisode: true,

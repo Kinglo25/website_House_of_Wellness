@@ -9,11 +9,12 @@ export default async function settings ({ container }) {
   const root = container.querySelector('#settings')
   root.append(h('<h1>Settings</h1>'))
 
-  const [config, disk, network, profiles] = await Promise.all([
+  const [config, disk, network, profiles, blocked] = await Promise.all([
     api.getConfig(),
     api.disk().catch(() => null),
     api.network().catch(() => null),
-    api.profiles().catch(() => [])
+    api.profiles().catch(() => []),
+    api.blocklist().catch(() => [])
   ])
   const grid = h('<div class="settings-grid"></div>')
   root.append(grid)
@@ -250,6 +251,53 @@ export default async function settings ({ container }) {
     hint: 'delete play-only torrents 30 minutes after you stop watching',
     value: config.streamCacheOnly
   }))
+
+  /* ------------------------------------------------------- queue watchdog */
+
+  grid.append(h('<h2 style="margin-top:22px">Stalled downloads</h2>'))
+  grid.append(numberSetting({
+    key: 'stallMinutes',
+    title: 'Give up after',
+    hint: 'minutes with no data at all — the files are kept either way',
+    value: config.stallMinutes,
+    min: 1
+  }))
+  grid.append(toggleSetting({
+    key: 'autoRetryStalled',
+    title: 'Try the next best release',
+    hint: 'when a download stalls, grab the next one your profile would have picked',
+    value: config.autoRetryStalled
+  }))
+
+  const blockPanel = h(`
+    <div class="setting">
+      <div class="label">
+        <b>Blocked releases</b>
+        <span class="tiny muted" data-slot="count"></span>
+      </div>
+      <div class="control"><button class="btn small" data-act="clear">Clear</button></div>
+    </div>`)
+  const blockCount = blockPanel.querySelector('[data-slot="count"]')
+  const clearButton = blockPanel.querySelector('[data-act="clear"]')
+
+  const drawBlocked = list => {
+    blockCount.textContent = list.length
+      ? `${list.length} release${list.length === 1 ? '' : 's'} that stalled — never offered again until cleared`
+      : 'nothing blocked; releases that stall are added here automatically'
+    clearButton.disabled = !list.length
+  }
+  drawBlocked(blocked)
+
+  clearButton.addEventListener('click', async () => {
+    try {
+      await api.clearBlocklist()
+      drawBlocked([])
+      toast('Blocklist cleared', 'ok')
+    } catch (err) {
+      toast(err.message, 'err')
+    }
+  })
+  grid.append(blockPanel)
 
   grid.append(h('<h2 style="margin-top:22px">Network</h2>'))
   grid.append(numberSetting({

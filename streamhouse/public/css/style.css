@@ -294,6 +294,8 @@ select.field option { background: var(--bg-elevated); }
 }
 .dl.done { border-color: rgba(58, 196, 125, 0.3); }
 .dl.error { border-color: rgba(227, 93, 106, 0.4); }
+.dl.stalled { border-color: rgba(242, 181, 68, 0.4); }
+.dl.stalled .bar i { background: var(--amber); }
 .dl-top { display: flex; align-items: center; gap: 12px; }
 .dl .thumb {
   width: 46px; height: 66px; flex: 0 0 46px; border-radius: 8px;
@@ -313,6 +315,7 @@ select.field option { background: var(--bg-elevated); }
 .status.paused { color: var(--muted); }
 .status.error { color: #ff9ba4; }
 .status.connecting { color: var(--amber); }
+.status.stalled { color: var(--amber); }
 
 .files { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .file-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }

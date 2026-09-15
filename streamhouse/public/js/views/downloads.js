@@ -8,8 +8,13 @@ const FILTERS = [
   { id: 'downloading', label: 'Downloading' },
   { id: 'seeding', label: 'Seeding' },
   { id: 'completed', label: 'Completed' },
-  { id: 'paused', label: 'Paused' }
+  { id: 'paused', label: 'Paused' },
+  { id: 'stalled', label: 'Stalled' }
 ]
+
+// A grab the watchdog gave up on is paused underneath, so it takes the same
+// buttons as a paused one — it just has a more useful word on it.
+const isHalted = torrent => torrent.status === 'paused' || torrent.status === 'stalled'
 
 // The download manager. Same job as a torrent client's transfer list: add,
 // pause, resume, pick files, watch the numbers, delete with or without data.
@@ -146,6 +151,7 @@ export default async function downloads ({ container }) {
       case 'seeding': return torrent.status === 'seeding'
       case 'completed': return torrent.progress >= 1 || torrent.status === 'done' || torrent.status === 'seeding'
       case 'paused': return torrent.status === 'paused'
+      case 'stalled': return torrent.status === 'stalled'
       default: return true
     }
   }
@@ -197,13 +203,14 @@ export default async function downloads ({ container }) {
           <div class="actions">
             ${torrent.playableIndex !== null ? '<button class="btn small primary" data-act="play">▶ Play</button>' : ''}
             ${torrent.playableIndex !== null ? '<span data-slot="cast"></span>' : ''}
-            <button class="btn small" data-act="toggle">${torrent.status === 'paused' ? '▶ Resume' : '⏸ Pause'}</button>
+            <button class="btn small" data-act="toggle">${torrent.status === 'stalled' ? '↻ Try again' : isHalted(torrent) ? '▶ Resume' : '⏸ Pause'}</button>
             <button class="btn small ghost" data-act="files">Files (${torrent.files.length})</button>
             <button class="btn small ghost" data-act="where" title="Where is it saved?">📁</button>
             <button class="btn small danger" data-act="remove">Delete</button>
           </div>
         </div>
         <div class="bar"><i style="width:${percent(torrent.progress)}"></i></div>
+        ${torrent.retryOf ? '<div class="tiny muted" style="margin-top:8px">↻ Swapped in after an earlier grab stalled</div>' : ''}
         ${torrent.error ? `<div class="tiny" style="color:#ff9ba4;margin-top:8px">${esc(torrent.error)}</div>` : ''}
       </div>`)
 
@@ -222,7 +229,7 @@ export default async function downloads ({ container }) {
     node.querySelector('[data-act="toggle"]').addEventListener('click', async event => {
       event.currentTarget.disabled = true
       try {
-        if (torrent.status === 'paused') await api.resumeTorrent(torrent.id)
+        if (isHalted(torrent)) await api.resumeTorrent(torrent.id)
         else await api.pauseTorrent(torrent.id)
         await refresh()
       } catch (err) {
