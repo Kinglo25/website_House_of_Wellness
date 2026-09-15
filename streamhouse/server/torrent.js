@@ -89,6 +89,7 @@ class TorrentEngine {
     this.client = null
     this.started = false
     this.playing = new Map() // infoHash -> last playback timestamp
+    this.onComplete = null   // set by the app: see _announceComplete
   }
 
   start () {
@@ -266,9 +267,21 @@ class TorrentEngine {
       record.error = null
       if (!config.get().seedAfterDownload) torrent.pause()
       this.store.save()
+      this._announceComplete(record, torrent)
     })
 
     return torrent
+  }
+
+  /* Whoever is interested in a finished download — the importer, today.
+   * Injected rather than imported so the engine stays a torrent engine. */
+  _announceComplete (record, torrent) {
+    if (typeof this.onComplete !== 'function') return
+    try {
+      this.onComplete(record, { files: this.stats(record).files, torrentName: torrent?.name || record.name })
+    } catch (err) {
+      console.error(`[torrent] completion handler failed: ${err.message}`)
+    }
   }
 
   _cacheMetadata (torrent) {

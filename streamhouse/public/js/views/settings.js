@@ -254,6 +254,22 @@ export default async function settings ({ container }) {
 
   /* ------------------------------------------------------- queue watchdog */
 
+  /* -------------------------------------------------------- media library */
+
+  grid.append(h('<h2 style="margin-top:22px">Media library</h2>'))
+  grid.append(toggleSetting({
+    key: 'importFinished',
+    title: 'File finished downloads',
+    hint: 'hardlink each finished file into a tidy tree Plex, Jellyfin or Kodi can index — the download folder is left alone and seeding carries on',
+    value: config.importFinished
+  }))
+  grid.append(textSetting({
+    key: 'libraryDir',
+    title: 'Library folder',
+    hint: 'Series/Show/Season 02/Show - S02E05 - Title [1080p WEB-DL].mkv',
+    value: config.libraryDir
+  }))
+
   grid.append(h('<h2 style="margin-top:22px">Stalled downloads</h2>'))
   grid.append(numberSetting({
     key: 'stallMinutes',

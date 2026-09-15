@@ -39,6 +39,7 @@ PORT=8080 npm start                       # different web port
 HOST=0.0.0.0 npm start                    # reachable from your TV / phone
 STREAMHOUSE_DOWNLOADS=/media/films npm start
 STREAMHOUSE_DIR=/tmp/sh-test npm start    # separate settings/state directory
+STREAMHOUSE_LIBRARY=/media/library npm start
 ```
 
 Settings live in `~/.streamhouse/` (config, add-on list, library, watch history and
@@ -137,6 +138,32 @@ The Downloads page gives you what a torrent client gives you:
 
 Downloads survive a restart: the app keeps each torrent's metadata, re-checks the data
 already on disk and picks up where it left off — even with no peers around.
+
+## Filing downloads into a media library
+
+Everything lands in one flat folder named after whatever the release group felt
+like calling it, which no media server can index. Turn on **Settings → Media
+library → File finished downloads** and each finished file also appears under a
+name a scanner understands:
+
+```
+Series/Breaking Bad/Season 02/Breaking Bad - S02E05 - Breakage [1080p WEB-DL].mkv
+Movies/Arrival (2016)/Arrival (2016) [2160p BluRay].mkv
+```
+
+Point Plex, Jellyfin or Kodi at that folder and it will work the rest out.
+
+It **hardlinks**, so the file exists in both places while occupying the disk
+once, and the torrent carries on seeding from exactly the same bytes. A
+hardlink cannot cross a filesystem, so a library on another drive gets a copy
+instead. Nothing is moved, renamed or deleted in the download folder, and an
+existing file in the library is never overwritten.
+
+A download is only filed when StreamHouse is sure what it is — it uses the
+season and episode you clicked, not what the release name claims. Anything it
+cannot place confidently is left alone rather than scattered through your
+library under a guessed name. Press 📚 on a finished download to file it by
+hand, including anything downloaded before you turned this on.
 
 ## When a download goes nowhere
 
@@ -258,6 +285,7 @@ streamhouse/
 │   ├── addons.js       Stremio add-on protocol client (catalog/meta/stream/subtitles)
 │   ├── parse.js        release names → resolution, source, codec, group, seeders…
 │   ├── rank.js         quality profiles: score the parsed releases, best first
+│   ├── importer.js     files finished downloads into a Plex-readable tree
 │   ├── backoff.js      escalating backoff for add-ons that keep failing
 │   ├── watchdog.js     gives up on stalled grabs and retries the next best
 │   ├── blocklist.js    releases that did not work out, so they stop coming back
@@ -303,6 +331,7 @@ Useful if you want to drive it from a script or another app:
 | POST | `/api/torrents/:id/pause`｜`/resume` | |
 | POST | `/api/torrents/:id/files` | `{indices:[…]}` |
 | DELETE | `/api/torrents/:id?deleteFiles=1` | |
+| POST | `/api/torrents/:id/import` | file a finished download into the media library |
 | GET | `/api/stream/:id/:fileIdx` | byte-range video |
 | GET | `/api/playback/:id` | what the player needs before it starts |
 | GET | `/api/catalogs`, `/api/catalog`, `/api/meta/:type/:id` | add-on data |

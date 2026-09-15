@@ -206,11 +206,13 @@ export default async function downloads ({ container }) {
             <button class="btn small" data-act="toggle">${torrent.status === 'stalled' ? '↻ Try again' : isHalted(torrent) ? '▶ Resume' : '⏸ Pause'}</button>
             <button class="btn small ghost" data-act="files">Files (${torrent.files.length})</button>
             <button class="btn small ghost" data-act="where" title="Where is it saved?">📁</button>
+            ${done && !torrent.imported ? '<button class="btn small ghost" data-act="import" title="File this into your media library">📚</button>' : ''}
             <button class="btn small danger" data-act="remove">Delete</button>
           </div>
         </div>
         <div class="bar"><i style="width:${percent(torrent.progress)}"></i></div>
         ${torrent.retryOf ? '<div class="tiny muted" style="margin-top:8px">↻ Swapped in after an earlier grab stalled</div>' : ''}
+        ${torrent.imported ? `<div class="tiny muted" style="margin-top:8px">📚 In your library: <span class="mono">${esc(torrent.imported.path)}</span></div>` : ''}
         ${torrent.error ? `<div class="tiny" style="color:#ff9ba4;margin-top:8px">${esc(torrent.error)}</div>` : ''}
       </div>`)
 
@@ -234,6 +236,18 @@ export default async function downloads ({ container }) {
         await refresh()
       } catch (err) {
         toast(err.message, 'err')
+      }
+    })
+
+    node.querySelector('[data-act="import"]')?.addEventListener('click', async event => {
+      event.currentTarget.disabled = true
+      try {
+        const imported = await api.importTorrent(torrent.id)
+        toast(imported.mode === 'copy' ? 'Copied into your library' : 'Linked into your library', 'ok')
+        await refresh()
+      } catch (err) {
+        toast(err.message, 'err')
+        event.currentTarget.disabled = false
       }
     })
 

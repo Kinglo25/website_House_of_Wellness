@@ -5,6 +5,7 @@ import { config } from '../config.js'
 import { addons, clearAddonCache } from '../addons.js'
 import { parseVideoId, parseRuntime } from '../parse.js'
 import { blocklist } from '../blocklist.js'
+import { importTorrent } from '../importer.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { rankStreams, PROFILES } from '../rank.js'
 import { JsonStore } from '../store.js'
@@ -202,6 +203,26 @@ router.post('/torrents/:id/files', (req, res) => {
 
 router.delete('/torrents/:id', (req, res) => {
   res.json(engine.remove(req.params.id, { deleteFiles: req.query.deleteFiles === '1' || req.query.deleteFiles === 'true' }))
+})
+
+// File a finished download into the media library on demand — for anything
+// downloaded before importing was turned on, or that failed to file first time.
+router.post('/torrents/:id/import', (req, res) => {
+  const record = engine.record(req.params.id)
+  if (!record) return res.status(404).json({ error: 'Torrent not found' })
+  const stats = engine.stats(record)
+  if (stats.progress < 1) return res.status(409).json({ error: 'That download has not finished yet' })
+
+  const imported = importTorrent(record, { files: stats.files, torrentName: engine.torrent(record.id)?.name || record.name })
+  if (!imported) {
+    return res.status(422).json({
+      error: config.get().importFinished
+        ? 'Nothing here could be filed with confidence — there is no video file, or not enough is known about what it is.'
+        : 'Turn on "File finished downloads" in Settings first.'
+    })
+  }
+  record.imported = imported
+  res.json(imported)
 })
 
 // Where a finished download lives on disk, for "show me the file" in the UI.

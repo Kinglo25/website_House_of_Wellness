@@ -1,5 +1,5 @@
 import { JsonStore } from './store.js'
-import { DEFAULT_DOWNLOAD_DIR, ensureDir } from './paths.js'
+import { DEFAULT_DOWNLOAD_DIR, DEFAULT_LIBRARY_DIR, ensureDir } from './paths.js'
 
 const DEFAULTS = {
   // http server
@@ -24,6 +24,10 @@ const DEFAULTS = {
   maxResolution: 'any',       // any | 480p | 576p | 720p | 1080p | 2160p
   minSeeders: 0,              // 0 = accept any; below this a release sinks to the bottom
   maxStreamSize: 0,           // GB, 0 = no limit
+
+  // filing finished downloads where a media server can read them
+  importFinished: false,     // off by default: it writes into a second folder tree
+  libraryDir: DEFAULT_LIBRARY_DIR,
 
   // queue watchdog
   stallMinutes: 10,          // no data for this long and a grab is given up on

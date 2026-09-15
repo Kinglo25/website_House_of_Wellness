@@ -245,6 +245,11 @@ function streamRow (stream, { type, meta, state }) {
       </div>
     </div>`)
 
+  // `title` is what the player and the queue show. The rest is what the
+  // importer needs to file the finished download under a sensible name, and
+  // is worth recording now: after the download finishes, all we have is the
+  // release name.
+  const episode = meta.videos?.find(video => video.id === state.videoId)
   const playbackMeta = {
     title: `${meta.name}${state.episode ? ` S${state.season}E${state.episode}` : ''}`,
     poster: meta.poster,
@@ -252,7 +257,10 @@ function streamRow (stream, { type, meta, state }) {
     imdbId: meta.imdb_id || meta.id,
     videoId: state.videoId,
     season: state.season,
-    episode: state.episode
+    episode: state.episode,
+    seriesTitle: meta.name,
+    episodeTitle: episode?.name || episode?.title || null,
+    year: String(meta.releaseInfo || meta.year || '').slice(0, 4) || null
   }
 
   // Casting needs the torrent running locally first, so the TV has something

@@ -67,6 +67,7 @@ export const api = {
   selectFiles: (id, indices) => request(`/api/torrents/${encodeURIComponent(id)}/files`, { method: 'POST', body: { indices } }),
   removeTorrent: (id, deleteFiles) => request(`/api/torrents/${encodeURIComponent(id)}${qs({ deleteFiles: deleteFiles ? 1 : '' })}`, { method: 'DELETE' }),
   location: id => request(`/api/torrents/${encodeURIComponent(id)}/location`),
+  importTorrent: id => request(`/api/torrents/${encodeURIComponent(id)}/import`, { method: 'POST' }),
 
   playback: (id, fileIdx) => request(`/api/playback/${encodeURIComponent(id)}${qs({ fileIdx })}`),
   streamUrl: (id, fileIdx) => `/api/stream/${encodeURIComponent(id)}${fileIdx === undefined || fileIdx === null ? '' : `/${fileIdx}`}`,

@@ -13,6 +13,10 @@ import { engine } from '../server/torrent.js'
 import { checkForStalled, giveUp, stopWatchdog } from '../server/watchdog.js'
 import { config } from '../server/config.js'
 import { FailureTracker, BACKOFF_SECONDS } from '../server/backoff.js'
+import { sanitize, qualitySuffix, planPath, importableFiles, importTorrent, linkOrCopy } from '../server/importer.js'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 
 let passed = 0
 let failed = 0
@@ -482,6 +486,163 @@ console.log('\nStanding back from an add-on that keeps failing')
 
   eq('an empty id is ignored', tracker.recordFailure('', 'x'), null)
   eq('and always counts as available', tracker.isAvailable(''), true)
+}
+
+console.log('\nFiling a finished download where a media server can read it')
+{
+  eq('a colon becomes a dash, not nothing', sanitize('Alien: Covenant'), 'Alien - Covenant')
+  eq('slashes are removed', sanitize('AC/DC: Live'), 'ACDC - Live')
+  eq('so are the other characters Windows forbids', sanitize('What? "Now" <here>|'), 'What Now here')
+  eq('no trailing dot, which Windows also dislikes', sanitize('Dr. Strangelove.'), 'Dr. Strangelove')
+  eq('an empty name stays empty', sanitize(''), '')
+
+  eq('quality suffix', qualitySuffix({ resolution: '1080p', source: 'web-dl' }), ' [1080p WEB-DL]')
+  eq('resolution alone is enough', qualitySuffix({ resolution: '720p' }), ' [720p]')
+  eq('nothing known, nothing claimed', qualitySuffix({}), '')
+
+  const episode = planPath({
+    meta: { type: 'series', seriesTitle: 'Breaking Bad', season: 2, episode: 5, episodeTitle: 'Breakage' },
+    quality: { resolution: '1080p', source: 'web-dl' },
+    fileName: 'breaking.bad.s02e05.1080p.web-dl.x264.mkv'
+  })
+  eq('an episode is filed where a scanner looks for it',
+    episode, path.join('Series', 'Breaking Bad', 'Season 02', 'Breaking Bad - S02E05 - Breakage [1080p WEB-DL].mkv'))
+
+  eq('season zero is Specials', planPath({
+    meta: { type: 'series', seriesTitle: 'Doctor Who', season: 0, episode: 1 },
+    quality: {},
+    fileName: 'x.mkv'
+  }), path.join('Series', 'Doctor Who', 'Specials', 'Doctor Who - S00E01.mkv'))
+
+  eq('a movie gets its year', planPath({
+    meta: { type: 'movie', seriesTitle: 'Arrival', year: '2016' },
+    quality: { resolution: '2160p', source: 'bluray' },
+    fileName: 'arrival.2016.2160p.bluray.mkv'
+  }), path.join('Movies', 'Arrival (2016)', 'Arrival (2016) [2160p BluRay].mkv'))
+
+  // What the user clicked is a fact; what the release name claims is not.
+  eq('the clicked episode beats the parsed one', planPath({
+    meta: { type: 'series', seriesTitle: 'Show', season: 2, episode: 5 },
+    quality: { season: 9, episode: 9 },
+    fileName: 'x.mkv'
+  }), path.join('Series', 'Show', 'Season 02', 'Show - S02E05.mkv'))
+
+  // Old queue entries only carry the combined "Show S1E2" title.
+  eq('the episode suffix is stripped off an old title', planPath({
+    meta: { type: 'series', title: 'The Wire S03E07', season: 3, episode: 7 },
+    quality: {},
+    fileName: 'x.mkv'
+  }), path.join('Series', 'The Wire', 'Season 03', 'The Wire - S03E07.mkv'))
+
+  // Rather than scatter mystery folders through someone's library.
+  eq('an episode with no season is not filed', planPath({
+    meta: { type: 'series', seriesTitle: 'Show' }, quality: {}, fileName: 'x.mkv'
+  }), null)
+  eq('a title with no name is not filed', planPath({ meta: { type: 'movie' }, quality: {}, fileName: 'x.mkv' }), null)
+  eq('a non-video file is never filed', planPath({
+    meta: { type: 'movie', seriesTitle: 'Arrival' }, quality: {}, fileName: 'readme.nfo'
+  }), null)
+
+  eq('samples are skipped', importableFiles([
+    { name: 'movie-sample.mkv', length: 50 }, { name: 'movie.mkv', length: 5000 }
+  ]).map(f => f.name).join(), 'movie.mkv')
+  eq('so is anything that is not video', importableFiles([
+    { name: 'movie.nfo', length: 9 }, { name: 'movie.mkv', length: 5000 }
+  ]).map(f => f.name).join(), 'movie.mkv')
+  eq('and deselected files', importableFiles([
+    { name: 'a.mkv', length: 9000, selected: false }, { name: 'b.mkv', length: 10 }
+  ]).map(f => f.name).join(), 'b.mkv')
+  eq('biggest first', importableFiles([
+    { name: 'small.mkv', length: 10 }, { name: 'big.mkv', length: 900 }
+  ]).map(f => f.name).join(), 'big.mkv,small.mkv')
+}
+
+console.log('\nFiling it for real, on disk')
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-import-'))
+  const downloads = path.join(root, 'downloads')
+  const libraryDir = path.join(root, 'library')
+  fs.mkdirSync(downloads, { recursive: true })
+
+  const release = 'Breaking.Bad.S02E05.1080p.WEB-DL.x264-GRP'
+  fs.mkdirSync(path.join(downloads, release), { recursive: true })
+  const sourceFile = path.join(downloads, release, `${release}.mkv`)
+  fs.writeFileSync(sourceFile, 'not really a video')
+
+  const record = {
+    id: 'a'.repeat(40),
+    name: release,
+    savePath: downloads,
+    meta: { type: 'series', seriesTitle: 'Breaking Bad', season: 2, episode: 5, episodeTitle: 'Breakage' }
+  }
+  const files = [{ name: `${release}.mkv`, path: path.join(release, `${release}.mkv`), length: 18, selected: true }]
+
+  config.update({ importFinished: false, libraryDir })
+  eq('nothing happens while filing is turned off', importTorrent(record, { files, torrentName: release }), null)
+
+  config.update({ importFinished: true, libraryDir })
+  const imported = importTorrent(record, { files, torrentName: release })
+  const expected = path.join(libraryDir, 'Series', 'Breaking Bad', 'Season 02', 'Breaking Bad - S02E05 - Breakage [1080p WEB-DL].mkv')
+  eq('it lands under the name a scanner expects', imported.path, expected)
+  eq('by hardlink, so it costs no extra disk', imported.mode, 'hardlink')
+  ok('the file is really there', fs.existsSync(expected))
+  eq('and it is the same bytes', fs.readFileSync(expected, 'utf8'), 'not really a video')
+  eq('the same inode, in fact', fs.statSync(expected).ino, fs.statSync(sourceFile).ino)
+
+  // The torrent must keep seeding from exactly what it had.
+  ok('the download is left untouched', fs.existsSync(sourceFile))
+
+  const again = importTorrent(record, { files, torrentName: release })
+  eq('filing it twice does not overwrite', again.mode, 'already there')
+  eq('and does not duplicate', fs.readdirSync(path.dirname(expected)).length, 1)
+
+  // A file that vanished between finishing and filing. Has to be a different
+  // episode: the one above already has a destination, and an existing
+  // destination is answered before the source is ever looked at.
+  const ghostRecord = { ...record, meta: { ...record.meta, episode: 6, episodeTitle: 'Peekaboo' } }
+  const ghost = [{ name: 'gone.mkv', path: 'gone.mkv', length: 10, selected: true }]
+  eq('a missing source file is not an error', importTorrent(ghostRecord, { files: ghost, torrentName: release }), null)
+  eq('and leaves no empty folder behind', fs.readdirSync(path.dirname(expected)).length, 1)
+
+  // Copy is the fallback when a hardlink cannot cross a filesystem.
+  const copied = path.join(root, 'copy.mkv')
+  eq('linkOrCopy hardlinks when it can', linkOrCopy(sourceFile, copied), 'hardlink')
+
+  config.update({ importFinished: false })
+  fs.rmSync(root, { recursive: true, force: true })
+}
+
+console.log('\nHanding a finished download to whoever is interested')
+{
+  // The engine tells the app a download finished; the app decides what that
+  // means. This is that handover, which is all the engine knows about it.
+  const record = { id: 'f'.repeat(40), name: 'Release.Name', meta: {} }
+  engine.stats = () => ({ files: [{ name: 'a.mkv' }] })
+
+  let got = null
+  engine.onComplete = (rec, details) => { got = { rec, details } }
+  engine._announceComplete(record, { name: 'Actual.Torrent.Name' })
+  eq('the record is handed over', got.rec.id, record.id)
+  eq('with its files', got.details.files.length, 1)
+  eq('and the real release name, not the display title', got.details.torrentName, 'Actual.Torrent.Name')
+
+  const survives = () => {
+    try {
+      engine._announceComplete(record, { name: 'x' })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  engine.onComplete = null
+  ok('no handler at all is fine', survives())
+
+  // A download finishing must never be able to crash the engine, whatever the
+  // app does with the news.
+  engine.onComplete = () => { throw new Error('importer exploded') }
+  ok('and a handler that throws does not take the engine down', survives())
+  engine.onComplete = null
 }
 
 /* -------------------------------------------------------------------- done */

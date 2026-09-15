@@ -12,6 +12,12 @@ export const DEFAULT_DOWNLOAD_DIR = process.env.STREAMHOUSE_DOWNLOADS
   ? path.resolve(process.env.STREAMHOUSE_DOWNLOADS)
   : path.join(os.homedir(), 'Downloads', 'StreamHouse')
 
+// Where imported media is filed, if importing is turned on. Separate from the
+// download folder on purpose: that one belongs to the torrent client.
+export const DEFAULT_LIBRARY_DIR = process.env.STREAMHOUSE_LIBRARY
+  ? path.resolve(process.env.STREAMHOUSE_LIBRARY)
+  : path.join(os.homedir(), 'Videos', 'StreamHouse')
+
 export function ensureDir (dir) {
   fs.mkdirSync(dir, { recursive: true })
   return dir

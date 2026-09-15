@@ -8,6 +8,7 @@ import api from './routes/api.js'
 import { localAddresses, isLanReachable } from './network.js'
 import { startDiscovery, stopDiscovery } from './discovery.js'
 import { startWatchdog, stopWatchdog } from './watchdog.js'
+import { importTorrent } from './importer.js'
 import { detectHost, printHostWarning, describeAddresses, firewallHint } from './environment.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -108,6 +109,14 @@ app.locals.rebind = async (host, port) => {
 }
 
 await start(settings.host, settings.port)
+// A finished download gets filed into the media library, if that is turned on.
+// Injected here rather than imported by the engine, which stays a torrent
+// engine and knows nothing about media libraries.
+engine.onComplete = (record, details) => {
+  const imported = importTorrent(record, details)
+  if (imported) record.imported = imported
+}
+
 engine.start()
 addons.refreshManifests()
 startDiscovery()
