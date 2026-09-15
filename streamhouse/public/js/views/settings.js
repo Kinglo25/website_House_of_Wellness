@@ -256,6 +256,30 @@ export default async function settings ({ container }) {
 
   /* -------------------------------------------------------- media library */
 
+  /* ----------------------------------------------------- following series */
+
+  grid.append(h('<h2 style="margin-top:22px">Following series</h2>'))
+  grid.append(toggleSetting({
+    key: 'monitorEnabled',
+    title: 'Check for new episodes',
+    hint: 'the master switch — each show is followed separately from its title page',
+    value: config.monitorEnabled
+  }))
+  grid.append(numberSetting({
+    key: 'monitorIntervalMinutes',
+    title: 'Check every',
+    hint: 'minutes',
+    value: config.monitorIntervalMinutes,
+    min: 5
+  }))
+  grid.append(numberSetting({
+    key: 'maxGrabsPerRun',
+    title: 'Grab at most',
+    hint: 'episodes per check, so catching up never becomes an avalanche',
+    value: config.maxGrabsPerRun,
+    min: 1
+  }))
+
   grid.append(h('<h2 style="margin-top:22px">Media library</h2>'))
   grid.append(toggleSetting({
     key: 'importFinished',

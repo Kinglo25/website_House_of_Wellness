@@ -139,6 +139,28 @@ The Downloads page gives you what a torrent client gives you:
 Downloads survive a restart: the app keeps each torrent's metadata, re-checks the data
 already on disk and picks up where it left off — even with no peers around.
 
+## Following a series
+
+Open a series and press **👁 Follow new episodes**. From then on StreamHouse
+checks every hour, and when a new episode airs it picks the best release your
+profile allows and downloads it, without being asked.
+
+It only ever looks **forward**. An episode counts as new when it aired *after*
+you pressed the button, so following a show with six seasons behind it
+downloads nothing at all — you are saying "tell me what happens next", not
+"fetch everything that ever happened". Grab the back catalogue by hand, the
+way you always would.
+
+It also grabs at most **three episodes per check** (Settings → Following
+series). A show that quietly turns into twenty unwatched episodes is a bug
+report, not a feature.
+
+What it has grabbed is remembered separately from the queue, so deleting a
+download never makes it come back. **Library → Following** lists what you are
+following and what has arrived, with **Check now** if you would rather not
+wait for the hour. Right-click a followed show to stop following it; it stays
+in your library either way.
+
 ## Filing downloads into a media library
 
 Everything lands in one flat folder named after whatever the release group felt
@@ -285,6 +307,8 @@ streamhouse/
 │   ├── addons.js       Stremio add-on protocol client (catalog/meta/stream/subtitles)
 │   ├── parse.js        release names → resolution, source, codec, group, seeders…
 │   ├── rank.js         quality profiles: score the parsed releases, best first
+│   ├── library.js      saved titles, which are followed, and what was grabbed
+│   ├── monitor.js      checks followed series for new episodes and grabs them
 │   ├── importer.js     files finished downloads into a Plex-readable tree
 │   ├── backoff.js      escalating backoff for add-ons that keep failing
 │   ├── watchdog.js     gives up on stalled grabs and retries the next best
@@ -336,6 +360,9 @@ Useful if you want to drive it from a script or another app:
 | GET | `/api/playback/:id` | what the player needs before it starts |
 | GET | `/api/catalogs`, `/api/catalog`, `/api/meta/:type/:id` | add-on data |
 | GET | `/api/streams/:type/:id?runtime=` | add-on streams, parsed and ranked best-first. A `<id>:<season>:<episode>` id gets episode checking; `runtime` (`"57 min"`) gets size checking |
+| POST | `/api/library/:id/monitor` | `{monitored}` — follow a series, from now on |
+| GET | `/api/grabs` | episodes the monitor has grabbed |
+| POST | `/api/monitor/run` | check followed series for new episodes now |
 | GET | `/api/blocklist` | releases that stalled and are no longer offered |
 | DELETE | `/api/blocklist/:infoHash`｜`/api/blocklist` | unblock one, or all |
 | GET/POST | `/api/config` | settings |

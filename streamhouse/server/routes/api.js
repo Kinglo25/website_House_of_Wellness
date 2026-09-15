@@ -6,6 +6,8 @@ import { addons, clearAddonCache } from '../addons.js'
 import { parseVideoId, parseRuntime } from '../parse.js'
 import { blocklist } from '../blocklist.js'
 import { importTorrent } from '../importer.js'
+import { library, grabs } from '../library.js'
+import { run as runMonitor } from '../monitor.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { rankStreams, PROFILES } from '../rank.js'
 import { JsonStore } from '../store.js'
@@ -13,7 +15,6 @@ import { mimeFor, isBrowserPlayable, srtToVtt } from '../mime.js'
 import { localAddresses, lanUrl, isLanReachable } from '../network.js'
 import * as cast from '../cast.js'
 
-const library = new JsonStore('library', [])
 const progress = new JsonStore('progress', {})
 
 const router = express.Router()
@@ -131,21 +132,36 @@ router.get('/search', wrap(async (req, res) => {
 
 /* ----------------------------------------------------------------- library */
 
-router.get('/library', (req, res) => res.json(library.get()))
+router.get('/library', (req, res) => res.json(library.list()))
 
 router.post('/library', (req, res) => {
   const item = req.body || {}
   if (!item.id || !item.type) return res.status(400).json({ error: 'id and type are required' })
-  const items = library.get().filter(entry => entry.id !== item.id)
-  items.unshift({ ...item, addedAt: Date.now() })
-  library.set(items)
-  res.status(201).json(item)
+  res.status(201).json(library.add(item))
 })
 
 router.delete('/library/:id', (req, res) => {
-  library.set(library.get().filter(entry => entry.id !== req.params.id))
-  res.json({ removed: req.params.id })
+  res.json({ removed: library.remove(req.params.id) })
 })
+
+/* ---------------------------------------------------------- following a show */
+
+// Monitoring only ever looks forward, so turning it on records when that was.
+router.post('/library/:id/monitor', (req, res) => {
+  const entry = library.setMonitored(req.params.id, req.body?.monitored !== false)
+  if (!entry) return res.status(404).json({ error: 'Add it to your library first' })
+  res.json(entry)
+})
+
+// What the monitor has grabbed, so an episode is never fetched twice.
+router.get('/grabs', (req, res) => res.json(grabs.list()))
+
+router.delete('/grabs/:videoId', (req, res) => {
+  res.json({ removed: grabs.forget(req.params.videoId) })
+})
+
+// Look for new episodes now, rather than waiting for the next hour to come round.
+router.post('/monitor/run', wrap(async (req, res) => res.json(await runMonitor())))
 
 /* -------------------------------------------------------- playback history */
 

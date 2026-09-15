@@ -8,7 +8,11 @@ export default async function library ({ container }) {
   const root = container.querySelector('#library')
   root.append(h('<h1>Library</h1>'))
 
-  const [items, progress] = await Promise.all([api.library(), api.progress()])
+  const [items, progress, grabbed] = await Promise.all([
+    api.library(),
+    api.progress(),
+    api.grabs().catch(() => [])
+  ])
   const watching = Object.values(progress).sort((a, b) => b.updatedAt - a.updatedAt)
 
   if (watching.length) {
@@ -31,6 +35,58 @@ export default async function library ({ container }) {
       grid.append(card)
     })
     root.append(grid)
+  }
+
+  /* -------------------------------------------------------------- followed */
+
+  const followed = items.filter(item => item.monitored)
+  if (followed.length || grabbed.length) {
+    const head = h(`<div class="section-title"><h2>Following</h2><span class="count">${followed.length} show${followed.length === 1 ? '' : 's'} · new episodes download on their own</span></div>`)
+    const check = h('<button class="btn small ghost" style="margin-left:auto">Check now</button>')
+    check.addEventListener('click', async () => {
+      check.disabled = true
+      check.textContent = 'Checking…'
+      try {
+        const { grabbed: found } = await api.runMonitor()
+        toast(found?.length ? `Grabbed ${found.length} episode${found.length === 1 ? '' : 's'}` : 'Nothing new right now', 'ok')
+        if (found?.length) location.reload()
+      } catch (err) {
+        toast(err.message, 'err')
+      } finally {
+        check.disabled = false
+        check.textContent = 'Check now'
+      }
+    })
+    head.append(check)
+    root.append(head)
+
+    if (followed.length) {
+      const grid = h('<div class="grid"></div>')
+      followed.forEach(item => {
+        const card = metaCard(item, { sub: 'following' })
+        card.addEventListener('contextmenu', async event => {
+          event.preventDefault()
+          if (await confirmDialog({
+            title: 'Stop following?',
+            body: `<p class="muted">New episodes of “${esc(item.name)}” will stop downloading on their own. It stays in your library.</p>`,
+            confirmLabel: 'Stop following'
+          })) {
+            await api.setMonitored(item.id, false)
+            toast(`No longer following ${item.name}`, 'ok')
+            card.remove()
+          }
+        })
+        grid.append(card)
+      })
+      root.append(grid)
+    }
+
+    if (grabbed.length) {
+      const recent = grabbed.slice(0, 6)
+        .map(entry => `<div>${esc(entry.title)}${entry.quality ? ` <span class="muted">· ${esc(entry.quality)}</span>` : ''}</div>`)
+        .join('')
+      root.append(h(`<div class="tiny muted" style="margin:10px 0 4px"><b>Grabbed for you</b>${recent}</div>`))
+    }
   }
 
   root.append(h('<div class="section-title"><h2>Saved</h2><span class="count">right-click a tile to remove it</span></div>'))

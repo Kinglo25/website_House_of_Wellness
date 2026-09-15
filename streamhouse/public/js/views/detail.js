@@ -109,6 +109,7 @@ function hero (meta, state) {
         <div class="cta">
           <button class="btn primary" data-act="play">▶ Play best</button>
           <button class="btn" data-act="save">＋ Add to library</button>
+          ${meta.type === 'series' ? '<button class="btn" data-act="follow">👁 Follow new episodes</button>' : ''}
           ${meta.imdb_id ? `<a class="btn ghost" target="_blank" rel="noreferrer" href="https://www.imdb.com/title/${esc(meta.imdb_id)}/">IMDb</a>` : ''}
         </div>
       </div>
@@ -122,16 +123,25 @@ function hero (meta, state) {
     else toast('No stream is available yet for this title')
   })
 
+  // Following implies saving: you cannot monitor something that is not in the
+  // library, and making the user press two buttons for one intention is rude.
+  node.querySelector('[data-act="follow"]')?.addEventListener('click', async event => {
+    const button = event.currentTarget
+    button.disabled = true
+    try {
+      await api.addToLibrary(libraryItem(meta))
+      await api.setMonitored(meta.id, true)
+      button.textContent = '👁 Following'
+      toast(`New episodes of ${meta.name} will download on their own`, 'ok')
+    } catch (err) {
+      toast(err.message, 'err')
+      button.disabled = false
+    }
+  })
+
   node.querySelector('[data-act="save"]').addEventListener('click', async event => {
     try {
-      await api.addToLibrary({
-        id: meta.id,
-        type: meta.type,
-        name: meta.name,
-        poster: meta.poster,
-        background: meta.background,
-        releaseInfo: meta.releaseInfo || meta.year
-      })
+      await api.addToLibrary(libraryItem(meta))
       event.target.textContent = '✓ In library'
       event.target.disabled = true
       toast(`${meta.name} added to your library`, 'ok')
@@ -141,6 +151,17 @@ function hero (meta, state) {
   })
 
   return node
+}
+
+function libraryItem (meta) {
+  return {
+    id: meta.id,
+    type: meta.type,
+    name: meta.name,
+    poster: meta.poster,
+    background: meta.background,
+    releaseInfo: meta.releaseInfo || meta.year
+  }
 }
 
 /* --------------------------------------------------------------- episodes */

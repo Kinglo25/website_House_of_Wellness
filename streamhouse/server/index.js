@@ -9,6 +9,7 @@ import { localAddresses, isLanReachable } from './network.js'
 import { startDiscovery, stopDiscovery } from './discovery.js'
 import { startWatchdog, stopWatchdog } from './watchdog.js'
 import { importTorrent } from './importer.js'
+import { startMonitor, stopMonitor } from './monitor.js'
 import { detectHost, printHostWarning, describeAddresses, firewallHint } from './environment.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -121,6 +122,7 @@ engine.start()
 addons.refreshManifests()
 startDiscovery()
 startWatchdog()
+startMonitor()
 
 // A malformed torrent or a dropped peer connection must never take the whole
 // app down while downloads are in flight.
@@ -139,6 +141,7 @@ async function shutdown () {
   server?.close()
   stopDiscovery()
   stopWatchdog()
+  stopMonitor()
   await engine.destroy()
   process.exit(0)
 }

@@ -25,6 +25,11 @@ const DEFAULTS = {
   minSeeders: 0,              // 0 = accept any; below this a release sinks to the bottom
   maxStreamSize: 0,           // GB, 0 = no limit
 
+  // following series
+  monitorEnabled: true,          // the master switch; each series opts in separately
+  monitorIntervalMinutes: 60,    // how often to look for new episodes
+  maxGrabsPerRun: 3,             // so a catch-up never becomes an avalanche
+
   // filing finished downloads where a media server can read them
   importFinished: false,     // off by default: it writes into a second folder tree
   libraryDir: DEFAULT_LIBRARY_DIR,

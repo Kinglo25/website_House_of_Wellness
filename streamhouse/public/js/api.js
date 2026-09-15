@@ -49,6 +49,9 @@ export const api = {
   library: () => request('/api/library'),
   addToLibrary: item => request('/api/library', { method: 'POST', body: item }),
   removeFromLibrary: id => request(`/api/library/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  setMonitored: (id, monitored) => request(`/api/library/${encodeURIComponent(id)}/monitor`, { method: 'POST', body: { monitored } }),
+  grabs: () => request('/api/grabs'),
+  runMonitor: () => request('/api/monitor/run', { method: 'POST' }),
 
   progress: () => request('/api/progress'),
   saveProgress: body => request('/api/progress', { method: 'POST', body }),

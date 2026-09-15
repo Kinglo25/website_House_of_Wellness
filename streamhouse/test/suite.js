@@ -14,6 +14,8 @@ import { checkForStalled, giveUp, stopWatchdog } from '../server/watchdog.js'
 import { config } from '../server/config.js'
 import { FailureTracker, BACKOFF_SECONDS } from '../server/backoff.js'
 import { sanitize, qualitySuffix, planPath, importableFiles, importTorrent, linkOrCopy } from '../server/importer.js'
+import { library, grabs } from '../server/library.js'
+import { episodesToGrab } from '../server/monitor.js'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -643,6 +645,94 @@ console.log('\nHanding a finished download to whoever is interested')
   engine.onComplete = () => { throw new Error('importer exploded') }
   ok('and a handler that throws does not take the engine down', survives())
   engine.onComplete = null
+}
+
+console.log('\nFollowing a series: what counts as a new episode?')
+{
+  const DAY = 24 * 60 * 60 * 1000
+  const now = Date.parse('2026-06-01T00:00:00Z')
+  const episode = (season, ep, daysAgo) => ({
+    id: `tt1:${season}:${ep}`, season, episode: ep, name: `E${ep}`,
+    released: new Date(now - daysAgo * DAY).toISOString()
+  })
+  // Six seasons behind it, two episodes since monitoring began, one not aired.
+  const meta = {
+    runtime: '50 min',
+    videos: [
+      episode(1, 1, 900), episode(1, 2, 890), episode(5, 9, 400),
+      episode(6, 1, 5), episode(6, 2, 1), episode(6, 3, -7)
+    ]
+  }
+  const entry = { id: 'tt1', name: 'Show', monitoredSince: now - 10 * DAY }
+  const ids = list => list.map(video => video.id).join(' ')
+
+  grabs.clear()
+  const due = episodesToGrab(entry, meta, { now })
+  eq('only episodes aired since you started following', ids(due), 'tt1:6:1 tt1:6:2')
+  eq('oldest first, so a catch-up airs in order', due[0].id, 'tt1:6:1')
+
+  // The whole point: following a long-running show downloads nothing at first.
+  eq('a show followed just now has nothing due',
+    episodesToGrab({ ...entry, monitoredSince: now }, meta, { now }).length, 0)
+
+  // And nothing that has not happened yet.
+  ok('next week\'s episode is not due', !ids(due).includes('tt1:6:3'))
+
+  grabs.add({ videoId: 'tt1:6:1', infoHash: 'a'.repeat(40), title: 'Show S6E1' })
+  eq('something already grabbed is not grabbed again', ids(episodesToGrab(entry, meta, { now })), 'tt1:6:2')
+  eq('even after its download is deleted', grabs.has('tt1:6:1'), true)
+
+  eq('nor something already in the queue',
+    ids(episodesToGrab(entry, meta, { now, queued: new Set(['tt1:6:2']) })), '')
+
+  // Specials are their own decision, not something to hoover up automatically.
+  eq('season zero is left alone', episodesToGrab(entry, {
+    videos: [{ id: 'tt1:0:1', season: 0, episode: 1, released: new Date(now - DAY).toISOString() }]
+  }, { now }).length, 0)
+
+  eq('an episode with no air date is not assumed to have aired', episodesToGrab(entry, {
+    videos: [{ id: 'tt1:6:9', season: 6, episode: 9, released: null }]
+  }, { now }).length, 0)
+
+  eq('a series with no episode list is fine', episodesToGrab(entry, {}, { now }).length, 0)
+  eq('and so is no metadata at all', episodesToGrab(entry, null, { now }).length, 0)
+
+  // Falls back to when it was added, for entries saved before following existed.
+  eq('no monitoredSince falls back to addedAt',
+    ids(episodesToGrab({ id: 'tt1', name: 'Show', addedAt: now - 3 * DAY }, meta, { now })), 'tt1:6:2')
+  grabs.clear()
+}
+
+console.log('\nFollowing a series: the library remembers the decision')
+{
+  library.remove('tt99')
+  const saved = library.add({ id: 'tt99', type: 'series', name: 'Show' })
+  eq('a new title is not followed by default', saved.monitored, false)
+  eq('and has no start date', saved.monitoredSince, null)
+
+  const at = Date.parse('2026-06-01T00:00:00Z')
+  const followed = library.setMonitored('tt99', true, at)
+  eq('following it records when', followed.monitoredSince, at)
+
+  // Re-adding must not silently stop following, or reset the clock.
+  const readded = library.add({ id: 'tt99', type: 'series', name: 'Show', poster: 'new.jpg' })
+  eq('adding it again keeps it followed', readded.monitored, true)
+  eq('and keeps the original start date', readded.monitoredSince, at)
+  eq('while still updating the rest', readded.poster, 'new.jpg')
+
+  eq('only followed series are monitored', library.monitored().map(e => e.id).join(), 'tt99')
+  library.add({ id: 'tt98', type: 'movie', name: 'Film' })
+  library.setMonitored('tt98', true, at)
+  eq('a film is never monitored, whatever the flag says', library.monitored().map(e => e.id).join(), 'tt99')
+
+  const unfollowed = library.setMonitored('tt99', false)
+  eq('unfollowing clears the start date', unfollowed.monitoredSince, null)
+  const refollowed = library.setMonitored('tt99', true, at + 1000)
+  eq('so following again starts from the new now', refollowed.monitoredSince, at + 1000)
+
+  eq('following something not in the library is refused', library.setMonitored('nope', true), null)
+  library.remove('tt99')
+  library.remove('tt98')
 }
 
 /* -------------------------------------------------------------------- done */
