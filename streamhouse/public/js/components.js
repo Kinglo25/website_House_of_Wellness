@@ -6,9 +6,13 @@ import { h, esc, posterUrl, percent } from './util.js'
 //
 // `onRemove` puts a visible × on the tile — Netflix's "Remove from row" — which
 // a phone or a TV remote can reach, unlike a right-click.
+export const KINDS = { movie: 'Film', series: 'Series', channel: 'Channel', tv: 'TV' }
+
 export function metaCard (meta, { progress = 0, ribbon = '', sub = '', open = '', onRemove = null, removeLabel = 'Remove from row' } = {}) {
   const title = meta.name || meta.title || 'Untitled'
-  const subtitle = sub || [meta.releaseInfo || meta.year, meta.type].filter(Boolean).join(' · ')
+  // Year and genre, as Netflix and Stremio label a tile; the kind only when the
+  // add-on gives no genre ("Film", not the raw "movie").
+  const subtitle = sub || [meta.releaseInfo || meta.year, meta.genres?.[0] || KINDS[meta.type] || meta.type].filter(Boolean).join(' · ')
   const card = h(`
     <div class="card" role="button" tabindex="0">
       <div class="poster">
@@ -121,6 +125,7 @@ export function shelf ({ title, source = '', moreHref = '' }) {
     </div>`)
   node.strip = node.querySelector('.strip')
   node.moreHref = moreHref
+  addRowArrows(node)
   return node
 }
 
@@ -150,4 +155,32 @@ export function emptyState ({ title, message, action = '', href = '' }) {
 
 export function errorBox (message) {
   return h(`<div class="error-box">${esc(message)}</div>`)
+}
+
+// Netflix's ‹ › at the ends of a row, for a mouse, which cannot scroll a row
+// sideways on its own; each moves the row most of a screen. They show on
+// hover, and only towards more — see style.css. The strip is looked up when
+// used: the home page swaps its placeholder strip for the real one.
+function addRowArrows (node) {
+  const prev = h('<button class="strip-nav prev" type="button" aria-label="Scroll left" tabindex="-1">‹</button>')
+  const next = h('<button class="strip-nav next" type="button" aria-label="Scroll right" tabindex="-1">›</button>')
+  const strip = () => node.querySelector('.strip')
+  const update = () => {
+    const row = strip()
+    if (!row) return
+    prev.hidden = row.scrollLeft < 8
+    next.hidden = row.scrollLeft + row.clientWidth >= row.scrollWidth - 8
+  }
+  const move = direction => {
+    const row = strip()
+    row?.scrollBy({ left: direction * row.clientWidth * 0.85, behavior: 'smooth' })
+  }
+  prev.addEventListener('click', () => move(-1))
+  next.addEventListener('click', () => move(1))
+  // A row's scroll does not bubble; listening while it travels down does.
+  node.addEventListener('scroll', update, true)
+  node.addEventListener('mouseenter', update)
+  prev.hidden = true
+  next.hidden = true
+  node.append(prev, next)
 }

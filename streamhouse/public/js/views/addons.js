@@ -72,7 +72,7 @@ export default async function addonsView ({ container }) {
       const resources = (manifest?.resources || []).map(entry => (typeof entry === 'string' ? entry : entry.name))
       const node = h(`
         <div class="addon">
-          <div class="logo" style="${manifest?.logo ? `background-image:url('${esc(manifest.logo)}')` : ''}"></div>
+          <div class="logo" style="${manifest?.logo ? `background-image:url('${esc(manifest.logo)}')` : ''}">${manifest?.logo ? '' : esc((manifest?.name || '?').trim().charAt(0).toUpperCase())}</div>
           <div style="flex:1;min-width:0">
             <div class="row"><b>${esc(manifest?.name || addon.transportUrl)}</b>
               <span class="tiny muted">v${esc(manifest?.version || '?')}</span>

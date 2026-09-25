@@ -139,7 +139,14 @@ async function renderActiveDownloads (root) {
 }
 
 async function fillBillboard (slot, heading, metas, catalog) {
-  const candidates = metas.filter(meta => meta.poster || meta.background).slice(0, 10)
+  // Not something already under way or finished: the billboard is for finding
+  // something, and Continue watching is right below it.
+  const seen = new Set()
+  try {
+    for (const entry of Object.values(await api.progress())) seen.add(entry.meta?.imdbId || entry.id)
+  } catch { /* feature anything */ }
+  const fresh = metas.filter(meta => (meta.poster || meta.background) && !seen.has(meta.id))
+  const candidates = (fresh.length ? fresh : metas.filter(meta => meta.poster || meta.background)).slice(0, 10)
   if (!candidates.length) return
   const day = Math.floor(Date.now() / 864e5)
   let meta = { type: catalog.type, ...candidates[day % candidates.length] }

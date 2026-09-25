@@ -2,6 +2,8 @@ import { api } from '../api.js'
 import { h, esc, toast } from '../util.js'
 import { metaCard, emptyState, errorBox } from '../components.js'
 
+const TYPE_LABELS = { movie: 'Films', series: 'Series', channel: 'Channels', tv: 'TV' }
+
 const PAGE_SIZE = 100
 
 // Browse one catalogue at a time with genre filtering and infinite scroll.
@@ -56,7 +58,7 @@ export default async function discover ({ query, container }) {
     const types = [...new Set(catalogs.map(catalog => catalog.type))]
     typeRow.innerHTML = ''
     types.forEach(type => {
-      const chip = h(`<button class="chip ${type === state.type ? 'active' : ''}">${esc(type)}</button>`)
+      const chip = h(`<button class="chip ${type === state.type ? 'active' : ''}">${esc(TYPE_LABELS[type] || type)}</button>`)
       chip.addEventListener('click', () => {
         state.type = type
         const first = catalogs.find(catalog => catalog.type === type)

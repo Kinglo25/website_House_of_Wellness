@@ -865,3 +865,30 @@ html.tv .skip-intro { bottom: 170px; right: 48px; font-size: 22px; padding: 16px
   .player-wrap .btn.icon { min-width: 44px; min-height: 44px; }
   .player-wrap select.field, .player-wrap .btn.small { min-height: 40px; }
 }
+
+/* A count or source inside a chosen chip stays readable on its purple */
+.chip.active .muted { color: rgba(255,255,255,0.8); }
+/* An add-on without a logo shows its initial */
+.addon .logo, .addon-row .logo { display: grid; place-items: center; font-weight: 800; font-size: 22px; color: var(--muted); }
+
+/* Row arrows: a mouse's way along a row. Over the posters, at the edges, on hover. */
+.shelf { position: relative; }
+.strip-nav {
+  position: absolute; top: 44px; height: calc(100% - 110px); width: 46px; z-index: 3;
+  border: 0; cursor: pointer; color: #fff; font-size: 40px; line-height: 1;
+  opacity: 0; transition: opacity 0.15s;
+}
+.strip-nav.prev { left: -8px; background: linear-gradient(90deg, rgba(11,11,23,0.92), rgba(11,11,23,0)); border-radius: 10px 0 0 10px; }
+.strip-nav.next { right: -8px; background: linear-gradient(270deg, rgba(11,11,23,0.92), rgba(11,11,23,0)); border-radius: 0 10px 10px 0; }
+.shelf:hover .strip-nav { opacity: 1; }
+.strip-nav:hover { color: var(--accent); }
+.strip-nav[hidden] { display: none; }
+/* A finger swipes and a remote steps; neither needs them. */
+@media (pointer: coarse) { .strip-nav { display: none; } }
+html.tv .strip-nav { display: none; }
+
+/* Room for a hovered tile to lift without its top being clipped by the row */
+.strip { padding-top: 6px; margin-top: -6px; }
+
+/* Breathing room between the billboard and the first row */
+.billboard-slot:not(:empty) { margin-bottom: 26px; }

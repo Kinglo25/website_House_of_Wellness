@@ -154,7 +154,11 @@ export default async function player ({ params, query, container }) {
       })
     } catch (err) {
       if (explicit) toast(err.message, 'err')
-      else if (err.code === 'not-installed') toast('No VLC on this computer, so this plays in the browser — some films will be silent. Install VLC, or choose the browser in Settings.')
+      // Said once a session: after that it is noise over the picture.
+      else if (err.code === 'not-installed' && sessionStorage.getItem('sh-no-vlc-said') !== '1') {
+        try { sessionStorage.setItem('sh-no-vlc-said', '1') } catch { /* said again next time */ }
+        toast('No VLC on this computer, so this plays in the browser — some films will be silent. Install VLC, or choose the browser in Settings.')
+      }
       return false
     }
     // Put the tile on Continue watching now; VLC's own position follows.
