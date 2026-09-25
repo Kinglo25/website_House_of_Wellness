@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler d1 migrations apply streamhouse-account --local && wrangler dev",
-    "deploy": "wrangler d1 migrations apply streamhouse-account --remote && wrangler deploy"
+    "deploy": "wrangler d1 migrations apply streamhouse-account --remote && wrangler deploy",
+    "test": "node test/run.js"
   },
   "devDependencies": {
     "wrangler": "^4.131.2"
