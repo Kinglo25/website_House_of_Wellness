@@ -8,6 +8,7 @@ import { parseStream, parseSize, parseSeeders, parseGroup } from '../server/pars
 import { rankStreams, scoreRelease } from '../server/rank.js'
 import { candidatePaths, playableUrl, isLoopback, vlcArgs, positionFrom } from '../server/vlc.js'
 import { fingerprint, localChanges, remoteWins } from '../server/merge.js'
+import { byteRange } from '../server/mime.js'
 
 let passed = 0
 let failed = 0
@@ -86,6 +87,19 @@ console.log('\nParsing what add-ons actually send')
 
   eq('nothing parseable is null, not a guess', parseStream({ name: 'Some Add-on' }).resolution, null)
   eq('an empty stream does not throw', parseStream({}).releaseName, '')
+}
+
+console.log('\nByte ranges, as a player asks for them')
+{
+  const range = header => JSON.stringify(byteRange(header, 1000))
+  eq('a plain range', range('bytes=100-199'), '{"start":100,"end":199}')
+  eq('open-ended runs to the end', range('bytes=900-'), '{"start":900,"end":999}')
+  eq('a suffix is the last bytes, not the first', range('bytes=-100'), '{"start":900,"end":999}')
+  eq('a suffix longer than the file is all of it', range('bytes=-5000'), '{"start":0,"end":999}')
+  eq('an end past the file stops at the file', range('bytes=100-5000'), '{"start":100,"end":999}')
+  eq('a start past the file is unsatisfiable', range('bytes=1000-'), 'null')
+  eq('an empty suffix is unsatisfiable', range('bytes=-0'), 'null')
+  eq('no range at all is the whole file', range(undefined), '{"start":0,"end":999}')
 }
 
 console.log('\nSizes, seeders and groups on their own')

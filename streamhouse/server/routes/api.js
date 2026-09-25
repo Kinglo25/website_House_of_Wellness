@@ -6,7 +6,7 @@ import { addons, clearAddonCache } from '../addons.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { rankStreams, PROFILES } from '../rank.js'
 import { library, progress } from '../history.js'
-import { mimeFor, isBrowserPlayable, srtToVtt } from '../mime.js'
+import { mimeFor, isBrowserPlayable, srtToVtt, byteRange } from '../mime.js'
 import { localAddresses, lanUrl, isLanReachable } from '../network.js'
 import * as cast from '../cast.js'
 import * as vlc from '../vlc.js'
@@ -263,15 +263,12 @@ async function serveFile (req, res, next) {
     return stream.pipe(res)
   }
 
-  const match = /bytes=(\d*)-(\d*)/.exec(range)
-  let start = match?.[1] ? parseInt(match[1], 10) : 0
-  let end = match?.[2] ? parseInt(match[2], 10) : total - 1
-  if (Number.isNaN(start) || start >= total) {
+  const wanted = byteRange(range, total)
+  if (!wanted) {
     res.writeHead(416, { 'Content-Range': `bytes */${total}` })
     return res.end()
   }
-  if (Number.isNaN(end) || end >= total) end = total - 1
-  if (end < start) end = total - 1
+  const { start, end } = wanted
 
   res.writeHead(206, {
     ...headers,
