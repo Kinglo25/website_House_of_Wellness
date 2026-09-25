@@ -747,3 +747,55 @@ html.tv .billboard .eyebrow { font-size: 15px; }
 .player-wrap .shortcuts dd { margin: 0; color: #d3d5ea; }
 kbd { display: inline-block; min-width: 22px; padding: 2px 6px; border-radius: 5px; text-align: center;
   background: var(--surface-strong); border: 1px solid var(--border); font: 600 12px/1.4 inherit; }
+
+/* ---------------------------------------------------------------- profiles */
+.avatar {
+  display: inline-grid; place-items: center; flex: 0 0 auto;
+  width: 30px; height: 30px; border-radius: 8px;
+  color: #fff; font-weight: 800; font-size: 15px; text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.avatar.lg { width: 44px; height: 44px; font-size: 20px; border-radius: 10px; }
+.avatar.xl { width: 128px; height: 128px; font-size: 56px; border-radius: 18px; }
+
+/* "Who's watching?" */
+.who {
+  position: fixed; inset: 0; z-index: 400;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px;
+  background: var(--bg); padding: 24px;
+}
+.who h1 { font-size: 40px; margin: 0; }
+.who-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 28px; }
+.who-pick {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px; border-radius: 20px;
+}
+.who-pick .avatar { transition: transform 0.15s, box-shadow 0.15s; }
+.who-pick:hover, .who-pick:focus-visible, .who-pick:focus { color: var(--text); outline: none; }
+.who-pick:hover .avatar, .who-pick:focus .avatar { transform: scale(1.06); box-shadow: 0 0 0 4px var(--text); }
+.who-name { font-size: 18px; font-weight: 600; }
+@media (max-width: 700px) {
+  .who h1 { font-size: 28px; }
+  .avatar.xl { width: 96px; height: 96px; font-size: 42px; }
+}
+html.tv .avatar.xl { width: 180px; height: 180px; font-size: 80px; }
+html.tv .who h1 { font-size: 56px; }
+html.tv .who-name { font-size: 24px; }
+
+/* The avatar in the top bar */
+.who-button {
+  display: flex; align-items: center; gap: 8px; margin-left: 14px;
+  background: none; border: 1px solid transparent; border-radius: 10px; padding: 3px 8px 3px 3px;
+  color: var(--text); cursor: pointer; font-weight: 600;
+}
+.who-button:hover, .who-button:focus-visible { border-color: var(--border); background: var(--surface); }
+.who-button[hidden] { display: none; }
+@media (max-width: 860px) { .who-button .who-label { display: none; } }
+
+/* Settings → Profiles */
+.profiles-panel { flex-direction: column; align-items: stretch; }
+.profiles { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.profile-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.profile-row .field { width: 190px; }
+.swatches { display: flex; gap: 6px; }
+.swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.swatch.on { border-color: var(--text); }

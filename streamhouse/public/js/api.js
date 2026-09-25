@@ -1,9 +1,12 @@
 /* Thin wrapper around the local StreamHouse HTTP API. */
 
+import { currentViewer } from './viewers.js'
+
 async function request (url, options = {}) {
   const res = await fetch(url, {
-    headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
     ...options,
+    // Which profile is watching: progress, ticks and the library are its own.
+    headers: { 'X-Viewer': currentViewer(), ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
     body: options.body ? JSON.stringify(options.body) : undefined
   })
   const text = await res.text()
@@ -37,6 +40,11 @@ export const api = {
   getConfig: () => request('/api/config'),
   saveConfig: patch => request('/api/config', { method: 'POST', body: patch }),
   profiles: () => request('/api/profiles'),
+
+  viewers: () => request('/api/viewers'),
+  addViewer: body => request('/api/viewers', { method: 'POST', body }),
+  updateViewer: (id, body) => request(`/api/viewers/${encodeURIComponent(id)}`, { method: 'POST', body }),
+  removeViewer: id => request(`/api/viewers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   addons: (refresh = false) => request(`/api/addons${refresh ? '?refresh=1' : ''}`),
   installAddon: url => request('/api/addons', { method: 'POST', body: { url } }),

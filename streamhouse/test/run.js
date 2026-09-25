@@ -9,6 +9,7 @@ import { rankStreams, scoreRelease } from '../server/rank.js'
 import { candidatePaths, playableUrl, isLoopback, vlcArgs, positionFrom } from '../server/vlc.js'
 import { fingerprint, localChanges, remoteWins } from '../server/merge.js'
 import { byteRange } from '../server/mime.js'
+import { MAIN, scopeKey, splitKey, progressOf, libraryOf, normalise, viewerOf } from '../server/viewers.js'
 import { recordPosition, setWatched, hide } from '../server/watching.js'
 import { inProgress, upNextCandidates, upNext, episodeLabel, sortLibrary, followedShows, episodeCalendar } from '../public/js/watching.js'
 
@@ -400,6 +401,36 @@ console.log('\nNew and upcoming episodes')
   const library = [{ id: 'x', type: 'series', addedAt: 5 }, { id: 'm', type: 'movie', addedAt: 9 }]
   const watching = { e: { id: 'y:1:1', updatedAt: 7, meta: { type: 'series', imdbId: 'y' } } }
   eq('shows to check: saved series and ones watched, not films', followedShows(library, watching).map(item => item.id).join(','), 'y,x')
+}
+
+console.log('\nProfiles: whose is what')
+{
+  eq('the main profile keeps keys as they always were', scopeKey(MAIN, 'tt1:1:2'), 'tt1:1:2')
+  eq('another profile\'s are prefixed', scopeKey('ab12', 'tt1:1:2'), 'p:ab12:tt1:1:2')
+  eq('and read back', JSON.stringify(splitKey('p:ab12:tt1:1:2')), '{"viewer":"ab12","key":"tt1:1:2"}')
+  eq('an ordinary key is the main profile\'s', splitKey('tt1:1:2').viewer, MAIN)
+  eq('a key that merely starts with p is not a prefix', splitKey('p:NOT VALID:x').viewer, MAIN)
+
+  const all = {
+    'tt1': { id: 'tt1', time: 5 },
+    'p:kid:tt1': { id: 'p:kid:tt1', time: 50 },
+    'p:kid:tt2': { id: 'p:kid:tt2', time: 7 }
+  }
+  eq('each profile sees only its own progress', Object.keys(progressOf(all, MAIN)).join(','), 'tt1')
+  eq('under the keys it knows', Object.keys(progressOf(all, 'kid')).join(','), 'tt1,tt2')
+  eq('with ids to match', progressOf(all, 'kid').tt1.id + ' ' + progressOf(all, 'kid').tt1.time, 'tt1 50')
+
+  const items = [{ id: 'a' }, { id: 'a', viewer: 'kid' }, { id: 'b', viewer: 'kid' }]
+  eq('and only its own library', libraryOf(items, 'kid').map(item => item.id).join(','), 'a,b')
+  eq('the main one\'s is what has no owner', libraryOf(items).length, 1)
+
+  const list = normalise([{ id: 'kid', name: '  Sam  ' }, { id: 'kid', name: 'dup' }, { id: 'BAD ID', name: 'x' }, { id: MAIN, name: '' }])
+  eq('a list is made whole: main first, no duplicates or bad ids', list.map(viewer => `${viewer.id}=${viewer.name}`).join(','), 'main=Me,kid=Sam')
+  eq('there is always a main profile', normalise([]).map(viewer => viewer.id).join(','), MAIN)
+  const request = header => ({ get: name => (name === 'x-viewer' ? header : undefined) })
+  eq('a request names its profile', viewerOf(request('kid'), list), 'kid')
+  eq('one naming a profile that is gone gets the main one', viewerOf(request('gone'), list), MAIN)
+  eq('as does one naming none', viewerOf(request(undefined), list), MAIN)
 }
 
 /* -------------------------------------------------------------------- done */

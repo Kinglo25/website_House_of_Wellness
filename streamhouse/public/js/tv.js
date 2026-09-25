@@ -48,7 +48,7 @@ function visible (el) {
 
 function candidates () {
   // A modal owns the focus while it is open.
-  const scope = document.querySelector('.modal-backdrop') || document.querySelector('.player-wrap') || document
+  const scope = document.querySelector('.modal-backdrop') || document.querySelector('.who') || document.querySelector('.player-wrap') || document
   // A tile's × is not a stop on the way along a row — only on a tile armed by
   // holding OK, see below. Otherwise every other press would land on one.
   return [...scope.querySelectorAll(FOCUSABLE)]

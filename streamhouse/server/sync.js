@@ -3,7 +3,8 @@ import os from 'os'
 import { JsonStore } from './store.js'
 import { config, SYNCED_SETTINGS } from './config.js'
 import { addons } from './addons.js'
-import { library, progress } from './history.js'
+import { library, progress, viewers } from './history.js'
+import { scopeKey } from './viewers.js'
 import { fingerprint, localChanges, remoteWins } from './merge.js'
 
 /* Account sync: the library, Continue watching, add-ons and stream settings
@@ -42,7 +43,8 @@ const KINDS = {
   },
   library: {
     store: () => library,
-    read: () => Object.fromEntries(library.get().map(item => [item.id, item])),
+    // Keyed per profile, as progress is: two profiles can save the same film.
+    read: () => Object.fromEntries(library.get().map(item => [scopeKey(item.viewer, item.id), item])),
     write: map => library.set(Object.values(map).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))),
     stamp: item => item?.addedAt || 0,
     deletable: true
@@ -57,8 +59,15 @@ const KINDS = {
   },
   setting: {
     store: () => config.store,
-    read: () => Object.fromEntries(SYNCED_SETTINGS.map(key => [key, config.get()[key]])),
-    write: map => config.update(map),
+    // The profile list travels as one more setting. A device that does not
+    // know profiles ignores it, as it ignores any setting it does not have.
+    stores: () => [config.store, viewers.store],
+    read: () => ({ ...Object.fromEntries(SYNCED_SETTINGS.map(key => [key, config.get()[key]])), viewers: viewers.list() }),
+    write: map => {
+      const { viewers: list, ...settings } = map
+      config.update(settings)
+      if (list) viewers.replace(list)
+    },
     stamp: () => 0,
     deletable: false
   }
@@ -100,7 +109,7 @@ class AccountSync {
     this.seen = {}
     for (const [kind, adapter] of Object.entries(KINDS)) {
       this.seen[kind] = fingerprint(adapter.read())
-      adapter.store().onChange(() => this.noticeEdit(kind))
+      for (const store of adapter.stores ? adapter.stores() : [adapter.store()]) store.onChange(() => this.noticeEdit(kind))
     }
   }
 

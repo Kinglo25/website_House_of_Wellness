@@ -154,6 +154,24 @@ The Downloads page gives you what a torrent client gives you:
 Downloads survive a restart: the app keeps each torrent's metadata, re-checks the data
 already on disk and picks up where it left off — even with no peers around.
 
+### Profiles: who is watching
+
+Each person in the house can have a profile, as on Netflix: their own *Continue
+watching*, watched episodes, *Up next*, calendar and library. Add-ons, downloads and
+settings stay shared. Add them under **Settings → Profiles** (up to six), with a name
+and a colour.
+
+With more than one profile, StreamHouse asks **Who's watching?** when it opens — once
+per browser tab, or per launch of the TV app — starting on whoever watched last, so on
+a TV one press of OK carries on. The avatar at the top right switches profile at any
+time. With only one profile nothing changes and nothing is asked.
+
+Profiles travel with an account: add one on the laptop and it is on the TV; remove one
+and its history goes on every device. The first profile keeps everything watched
+before profiles existed. A device still running an older StreamHouse sees only that
+first profile's history — and should be updated before a second profile saves the same
+title to its library, since an old device cannot tell the two saves apart.
+
 ### Already downloaded
 
 A film or episode you downloaded shows up on its title page as **On this computer**,

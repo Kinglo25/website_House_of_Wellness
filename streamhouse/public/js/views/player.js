@@ -1,6 +1,7 @@
 import { api } from '../api.js'
 import { h, esc, clock, toast, bytes } from '../util.js'
 import { castPicker } from '../cast.js'
+import { scopedKey, viewerStorageKey } from '../viewers.js'
 
 // What the keyboard does in the player, for the ? overlay.
 const SHORTCUTS = [
@@ -189,7 +190,9 @@ export default async function player ({ params, query, container }) {
       // title, poster and stream down here — otherwise continue watching ends
       // up with an entry it can neither name nor resume.
       await seedProgress(key, start, saved)
-      nativeTv.play(new URL(src, location.origin).toString(), meta.title || 'StreamHouse', start, String(key))
+      // The native player reports back with nothing but this key, so it names
+      // the profile too.
+      nativeTv.play(new URL(src, location.origin).toString(), meta.title || 'StreamHouse', start, scopedKey(key))
       handedOff = true
     } else if (await openInVlc()) {
       handedOff = true
@@ -435,11 +438,11 @@ export default async function player ({ params, query, container }) {
       }
       select.addEventListener('change', () => {
         const sub = chosen()
-        try { localStorage.setItem('sh-sub-lang', sub ? (sub.lang || '') : 'off') } catch { /* not remembered */ }
+        try { localStorage.setItem(viewerStorageKey('sh-sub-lang'), sub ? (sub.lang || '') : 'off') } catch { /* not remembered */ }
         show()
       })
       let preferred = ''
-      try { preferred = localStorage.getItem('sh-sub-lang') || '' } catch { /* nothing remembered */ }
+      try { preferred = localStorage.getItem(viewerStorageKey('sh-sub-lang')) || '' } catch { /* nothing remembered */ }
       const match = preferred && preferred !== 'off' ? subs.slice(0, 40).findIndex(sub => sub.lang === preferred) : -1
       if (match >= 0) {
         select.value = String(match)

@@ -5,7 +5,8 @@ import { config } from '../config.js'
 import { addons, clearAddonCache } from '../addons.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { rankStreams, PROFILES } from '../rank.js'
-import { library, progress } from '../history.js'
+import { library, progress, viewers } from '../history.js'
+import { MAIN, scopeKey, splitKey, progressOf, libraryOf, viewerOf } from '../viewers.js'
 import { recordPosition, setWatched, hide } from '../watching.js'
 import { mimeFor, isBrowserPlayable, srtToVtt, byteRange } from '../mime.js'
 import { localAddresses, lanUrl, isLanReachable } from '../network.js'
@@ -118,24 +119,57 @@ router.get('/search', wrap(async (req, res) => {
   res.json(await addons.search(query, types))
 }))
 
+/* ---------------------------------------------------------------- profiles */
+
+// Who is watching. Every request below names its profile in X-Viewer; one that
+// names none, or one since removed, is the main profile's — which is also all
+// an older device knows about.
+const who = req => viewerOf(req, viewers.list())
+
+router.get('/viewers', (req, res) => res.json(viewers.list()))
+
+router.post('/viewers', (req, res) => {
+  const name = String(req.body?.name || '').trim()
+  if (!name) return res.status(400).json({ error: 'A profile needs a name' })
+  res.status(201).json(viewers.add({ name, colour: req.body?.colour }))
+})
+
+router.post('/viewers/:id', (req, res) => {
+  res.json(viewers.update(req.params.id, { name: req.body?.name, colour: req.body?.colour }))
+})
+
+// Removing a profile removes what it watched and saved; nobody else's.
+router.delete('/viewers/:id', (req, res) => {
+  const { id } = req.params
+  viewers.remove(id)
+  const all = progress.get()
+  for (const key of Object.keys(all)) if (splitKey(key).viewer === id) delete all[key]
+  progress.set(all)
+  library.set(library.get().filter(item => item.viewer !== id))
+  res.json({ removed: id })
+})
+
 /* ----------------------------------------------------------------- library */
 
 router.get('/library', wrap(async (req, res) => {
   await account.fresh()
-  res.json(library.get())
+  res.json(libraryOf(library.get(), who(req)))
 }))
 
 router.post('/library', (req, res) => {
-  const item = req.body || {}
+  const viewer = who(req)
+  const { viewer: _, ...item } = req.body || {}
   if (!item.id || !item.type) return res.status(400).json({ error: 'id and type are required' })
-  const items = library.get().filter(entry => entry.id !== item.id)
-  items.unshift({ ...item, addedAt: Date.now() })
+  const mine = entry => entry.id === item.id && (entry.viewer || MAIN) === viewer
+  const items = library.get().filter(entry => !mine(entry))
+  items.unshift({ ...item, ...(viewer === MAIN ? {} : { viewer }), addedAt: Date.now() })
   library.set(items)
   res.status(201).json(item)
 })
 
 router.delete('/library/:id', (req, res) => {
-  library.set(library.get().filter(entry => entry.id !== req.params.id))
+  const viewer = who(req)
+  library.set(library.get().filter(entry => !(entry.id === req.params.id && (entry.viewer || MAIN) === viewer)))
   res.json({ removed: req.params.id })
 })
 
@@ -145,22 +179,33 @@ router.delete('/library/:id', (req, res) => {
 // from the account server first, for as long as that is quick.
 router.get('/progress', wrap(async (req, res) => {
   await account.fresh()
-  res.json(progress.get())
+  res.json(progressOf(progress.get(), who(req)))
 }))
+
+// The key an entry is stored under. A key that already names a profile is
+// taken as it is: the TV app's native player reports the key it was handed,
+// which the page scoped before handing it over.
+function storedKey (viewer, id) {
+  const already = splitKey(id)
+  if (already.viewer !== MAIN && viewers.has(already.viewer)) return String(id)
+  return scopeKey(viewer, id)
+}
+const asSeen = (entry, key) => ({ ...entry, id: splitKey(key).key })
 
 // Shared by the browser player, which posts here, and VLC, whose position the
 // server reads back itself. The rules are in watching.js.
-function recordProgress ({ id, time, duration, meta }) {
+function recordProgress ({ viewer = MAIN, id, time, duration, meta }) {
+  const key = storedKey(viewer, id)
   const all = progress.get()
-  const entry = recordPosition(all, { id, time, duration, meta })
+  const entry = recordPosition(all, { id: key, time, duration, meta })
   progress.set(all)
-  return entry || { id, cleared: true }
+  return entry ? asSeen(entry, key) : { id: splitKey(key).key, cleared: true }
 }
 
 router.post('/progress', (req, res) => {
   const { id, time, duration, meta } = req.body || {}
   if (!id) return res.status(400).json({ error: 'id is required' })
-  res.json(recordProgress({ id, time, duration, meta }))
+  res.json(recordProgress({ viewer: who(req), id, time, duration, meta }))
 })
 
 // The tick on an episode, by hand: "Mark as watched" and its undo.
@@ -170,23 +215,29 @@ router.post('/watched', (req, res) => {
   const list = Array.isArray(items) ? items : [{ id, meta }]
   if (!list.length || list.some(item => !item?.id)) return res.status(400).json({ error: 'id is required' })
   if (list.length > 500) return res.status(413).json({ error: 'At most 500 at once' })
+  const viewer = who(req)
   const all = progress.get()
-  const results = list.map(item => setWatched(all, { id: String(item.id), watched: Boolean(watched), meta: item.meta }) || { id: String(item.id), cleared: true })
+  const results = list.map(item => {
+    const key = storedKey(viewer, String(item.id))
+    const entry = setWatched(all, { id: key, watched: Boolean(watched), meta: item.meta })
+    return entry ? asSeen(entry, key) : { id: String(item.id), cleared: true }
+  })
   progress.set(all)
   res.json(Array.isArray(items) ? results : results[0])
 })
 
 // "Remove from row" on continue watching and up next.
 router.post('/progress/:id/hide', (req, res) => {
+  const key = storedKey(who(req), req.params.id)
   const all = progress.get()
-  const entry = hide(all, req.params.id)
+  const entry = hide(all, key)
   progress.set(all)
-  res.json(entry || { id: req.params.id, cleared: true })
+  res.json(entry ? asSeen(entry, key) : { id: req.params.id, cleared: true })
 })
 
 router.delete('/progress/:id', (req, res) => {
   const all = progress.get()
-  delete all[req.params.id]
+  delete all[storedKey(who(req), req.params.id)]
   progress.set(all)
   res.json({ removed: req.params.id })
 })
@@ -343,6 +394,7 @@ router.get('/vlc', (req, res) => {
 // refused: VLC would start on a screen nobody is watching.
 router.post('/vlc/play', wrap(async (req, res) => {
   const { url, title, start, progressKey, meta, explicit } = req.body || {}
+  const viewer = who(req)
   if (!explicit && config.get().desktopPlayer === 'browser') {
     return res.status(409).json({ error: 'Settings say to play in the browser', code: 'disabled' })
   }
@@ -361,7 +413,7 @@ router.post('/vlc/play', wrap(async (req, res) => {
     url: target,
     title: typeof title === 'string' ? title : '',
     start: Number(start) || 0,
-    onProgress: progressKey ? ({ time, duration }) => recordProgress({ id: String(progressKey), time, duration, meta }) : null
+    onProgress: progressKey ? ({ time, duration }) => recordProgress({ viewer, id: String(progressKey), time, duration, meta }) : null
   })
   res.json({ ok: true })
 }))
