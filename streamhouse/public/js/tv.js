@@ -67,6 +67,11 @@ function nearest (from, direction) {
   const origin = centre(from)
   let best = null
   let bestScore = Infinity
+  // Android TV's beam rule, for left and right: something in the same row,
+  // however far along it, beats anything outside the row, however near.
+  const sideways = direction === 'ArrowLeft' || direction === 'ArrowRight'
+  let inBeam = null
+  let inBeamScore = Infinity
 
   for (const el of candidates()) {
     if (el === from) continue
@@ -91,12 +96,16 @@ function nearest (from, direction) {
     // nothing happens, rather than a jump to whatever sits diagonally.
     if (!overlaps && (direction === 'ArrowLeft' || direction === 'ArrowRight') && from.closest('.strip, .grid')) continue
     const score = along + across * (overlaps ? 0.1 : 3)
+    if (sideways && overlaps && score < inBeamScore) {
+      inBeamScore = score
+      inBeam = el
+    }
     if (score < bestScore) {
       bestScore = score
       best = el
     }
   }
-  return best
+  return inBeam || best
 }
 
 export function focusFirst () {
@@ -136,7 +145,20 @@ function onKeyDown (event) {
 
   if (key === 'Enter' && document.activeElement && document.activeElement !== document.body) {
     const active = document.activeElement
-    if (active.matches('input, textarea, select')) return
+    // OK on a menu opens its list, which the remote can then work; a browser
+    // that cannot open one from script gets the next option instead.
+    if (active.matches('select')) {
+      event.preventDefault()
+      if (event.repeat) return
+      try {
+        active.showPicker()
+      } catch {
+        active.selectedIndex = (active.selectedIndex + 1) % active.options.length
+        active.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+      return
+    }
+    if (active.matches('input, textarea')) return
     event.preventDefault()
     // Held down, OK repeats: one press is one click, never a burst of them.
     if (event.repeat) {
@@ -155,8 +177,21 @@ function onKeyDown (event) {
   }
 
   if (!key?.startsWith('Arrow')) return
-  if (event.target.matches('input[type="range"], select, textarea')) return
-  if (event.target.matches('input') && (key === 'ArrowLeft' || key === 'ArrowRight')) return
+  if (event.target.matches('input[type="range"], textarea')) return
+  // A text field keeps left and right for its cursor — until the cursor is at
+  // that end of the text, when the arrow moves on, to the button beside it.
+  if (event.target.matches('input') && (key === 'ArrowLeft' || key === 'ArrowRight')) {
+    const field = event.target
+    let atEdge = true
+    try {
+      const end = field.value.length
+      atEdge = field.selectionStart === field.selectionEnd &&
+        (key === 'ArrowRight' ? field.selectionStart >= end : field.selectionStart <= 0)
+    } catch { /* a field with no cursor, such as a number: always moves on */ }
+    if (!atEdge) return
+  }
+  // A closed menu does not keep the arrows either: on a TV, up and down moving
+  // the choice meant a setting changed — and saved — just by passing it.
 
   // In the player, left/right belong to seeking — the player handles those.
   const inPlayer = Boolean(document.querySelector('.player-wrap'))

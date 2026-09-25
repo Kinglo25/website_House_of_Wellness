@@ -40,7 +40,7 @@ export function metaCard (meta, { progress = 0, ribbon = '', sub = '', open = ''
     // On a TV the remote needs somewhere to be: the tile beside it.
     if (document.documentElement.classList.contains('tv')) neighbour?.focus({ preventScroll: true })
     // The last tile gone: a row with nothing in it goes too.
-    if (strip && !strip.children.length) strip.closest('.shelf')?.setAttribute('hidden', '')
+    if (strip && !strip.querySelector('.card:not(.see-all)')) strip.closest('.shelf')?.setAttribute('hidden', '')
   })
   card.addEventListener('click', go)
   card.addEventListener('keydown', event => {
@@ -120,7 +120,15 @@ export function shelf ({ title, source = '', moreHref = '' }) {
       <div class="strip"></div>
     </div>`)
   node.strip = node.querySelector('.strip')
+  node.moreHref = moreHref
   return node
+}
+
+// The last tile of a row on a TV: "See all", where the remote already is at
+// the end of the row — the heading's link is out of the D-pad's way. Shown in
+// TV mode only (see style.css).
+export function seeAllCard (href) {
+  return h(`<a class="card see-all" href="${esc(href)}"><div class="poster"><span>See all</span></div></a>`)
 }
 
 export function skeletonStrip (count = 7) {

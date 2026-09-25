@@ -20,6 +20,12 @@ export default async function settings ({ container, query = {} }) {
   ])
   const grid = h('<div class="settings-grid"></div>')
   root.append(grid)
+  // Switches are buttons, so a remote and a keyboard can reach them; this keeps
+  // what they announce in step with how they look, whichever code flips them.
+  const announce = toggle => toggle.setAttribute('aria-checked', String(toggle.classList.contains('on')))
+  new MutationObserver(changes => changes.forEach(change => change.target.matches?.('.switch') && announce(change.target)))
+    .observe(grid, { attributes: true, attributeFilter: ['class'], subtree: true })
+  setTimeout(() => grid.querySelectorAll('.switch').forEach(announce))
 
   const save = async patch => {
     try {
@@ -34,7 +40,7 @@ export default async function settings ({ container, query = {} }) {
     const node = h(`
       <div class="setting">
         <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
-        <div class="control"><input class="field" value="${esc(value)}" placeholder="${esc(placeholder)}"></div>
+        <div class="control"><input class="field" value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(title)}"></div>
       </div>`)
     const input = node.querySelector('input')
     input.addEventListener('change', () => save({ [key]: input.value }))
@@ -45,7 +51,7 @@ export default async function settings ({ container, query = {} }) {
     const node = h(`
       <div class="setting">
         <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
-        <div class="control"><input class="field" type="number" min="${min}" step="${step}" value="${esc(display(value))}"></div>
+        <div class="control"><input class="field" type="number" min="${min}" step="${step}" value="${esc(display(value))}" aria-label="${esc(title)}"></div>
       </div>`)
     const input = node.querySelector('input')
     input.addEventListener('change', () => save({ [key]: transform(Number(input.value)) }))
@@ -57,7 +63,7 @@ export default async function settings ({ container, query = {} }) {
       <div class="setting">
         <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
         <div class="control">
-          <select class="field">
+          <select class="field" aria-label="${esc(title)}">
             ${options.map(option => `<option value="${esc(option.value)}" ${String(option.value) === String(value) ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}
           </select>
         </div>
@@ -71,7 +77,7 @@ export default async function settings ({ container, query = {} }) {
     const node = h(`
       <div class="setting">
         <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
-        <div class="switch ${value ? 'on' : ''}"><i></i></div>
+        <button type="button" role="switch" class="switch ${value ? 'on' : ''}" aria-label="${esc(title)}"><i></i></button>
       </div>`)
     const toggle = node.querySelector('.switch')
     toggle.addEventListener('click', () => {
@@ -204,7 +210,7 @@ export default async function settings ({ container, query = {} }) {
         network. Off means this computer only — which is why a TV cannot find it.</span>
         <div id="tv-address" style="margin-top:12px"></div>
       </div>
-      <div class="switch ${network?.reachable ? 'on' : ''}" id="tv-expose"><i></i></div>
+      <button type="button" role="switch" class="switch ${network?.reachable ? 'on' : ''}" id="tv-expose" aria-label="Allow other devices"><i></i></button>
     </div>`)
   grid.append(tvPanel)
 
@@ -253,7 +259,7 @@ export default async function settings ({ container, query = {} }) {
         <span class="tiny muted">Bigger text and remote-control navigation — arrow keys move the
         highlight, OK selects, Back goes back. Detected automatically on smart TVs.</span>
       </div>
-      <div class="switch ${document.documentElement.classList.contains('tv') ? 'on' : ''}"><i></i></div>
+      <button type="button" role="switch" class="switch ${document.documentElement.classList.contains('tv') ? 'on' : ''}" aria-label="TV mode"><i></i></button>
     </div>`)
   tvModePanel.querySelector('.switch').addEventListener('click', event => {
     const toggle = event.currentTarget

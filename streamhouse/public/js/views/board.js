@@ -1,6 +1,6 @@
 import { api } from '../api.js'
 import { h, bytes, esc } from '../util.js'
-import { metaCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox, detailHref } from '../components.js'
+import { metaCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox, detailHref, seeAllCard } from '../components.js'
 import { inProgress, upNextCandidates, upNext } from '../watching.js'
 
 // Home. Continue watching, whatever is downloading right now, then the first
@@ -65,6 +65,7 @@ export default async function board ({ container }) {
         if (!billboardSlot.childElementCount) fillBillboard(billboardSlot, heading, metas, catalog)
         const strip = h('<div class="strip"></div>')
         metas.slice(0, 24).forEach(meta => strip.append(metaCard(meta)))
+        strip.append(seeAllCard(node.moreHref))
         placeholderStrip.replaceWith(strip)
       })
       .catch(() => node.remove())
@@ -90,6 +91,8 @@ async function renderContinueWatching (root) {
     node.strip.insertBefore(card, later || null)
     node.hidden = false
   }
+  // Oldest of all, so every tile placed by time lands before it.
+  place(seeAllCard(node.moreHref), -1)
   entries.forEach(entry => place(continueCard(entry, { onRemove: () => api.hideProgress(entry.id) }), entry.updatedAt))
   node.hidden = !entries.length
   root.append(node)
@@ -131,6 +134,7 @@ async function renderActiveDownloads (root) {
       }
     ))
   })
+  node.strip.append(seeAllCard(node.moreHref))
   root.append(node)
 }
 
