@@ -729,3 +729,8 @@ html.tv .billboard .eyebrow { font-size: 15px; }
 .stream-filters { margin: 0 0 12px; }
 .stream-filters:empty { display: none; }
 .show-all { margin-top: 10px; }
+
+/* A copy already on this computer */
+.stream.local .tag { background: rgba(58,196,125,0.16); color: var(--green); }
+.local-list { margin-bottom: 10px; }
+.on-disk { color: var(--green); font-weight: 600; }

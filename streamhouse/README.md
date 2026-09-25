@@ -154,6 +154,14 @@ The Downloads page gives you what a torrent client gives you:
 Downloads survive a restart: the app keeps each torrent's metadata, re-checks the data
 already on disk and picks up where it left off — even with no peers around.
 
+### Already downloaded
+
+A film or episode you downloaded shows up on its title page as **On this computer**,
+above the add-ons' streams, and the big Play button plays that copy — no internet
+needed, as Netflix plays a downloaded episode. One still downloading says how far it
+has got and can be watched while it finishes. Downloaded episodes carry **⭳ On disk**
+in the episode list.
+
 ## On your phone
 
 On an **Android phone**, install the same app as the TV

@@ -20,13 +20,18 @@ export default async function detail ({ params, query = {}, container }) {
   // Neither of these is worth failing the page over.
   const progressLoad = api.progress().catch(() => ({}))
   const libraryLoad = api.library().catch(() => [])
+  const downloadsLoad = api.torrents().then(data => data.torrents.filter(torrent => torrent.mode === 'download')).catch(() => [])
   try {
     meta = await api.meta(type, id)
   } catch (err) {
     root.innerHTML = '<div class="pad"></div>'
     return root.querySelector('.pad').append(errorBox(err.message))
   }
-  const [progress, library] = await Promise.all([progressLoad, libraryLoad])
+  const [progress, library, downloads] = await Promise.all([progressLoad, libraryLoad, downloadsLoad])
+  // What was downloaded for a given film or episode, most complete first.
+  const onDisk = videoId => downloads
+    .filter(torrent => torrent.meta?.videoId === videoId && torrent.status !== 'error')
+    .sort((a, b) => b.progress - a.progress)
   root.innerHTML = ''
 
   const state = {
@@ -68,7 +73,7 @@ export default async function detail ({ params, query = {}, container }) {
 
   if (isSeries) {
     // A tick set by hand moves the big button on, as it does on Netflix.
-    episodes = renderEpisodes(meta, state, progress, () => loadStreams(), () => {
+    episodes = renderEpisodes(meta, state, progress, onDisk, () => loadStreams(), () => {
       primary = primaryAction({ meta, next: upNext(meta.videos, progress), progress, id })
       heroNode.setPrimary(primary)
     })
@@ -103,6 +108,8 @@ export default async function detail ({ params, query = {}, container }) {
       if (state.streamsFor !== videoId) return
       loading.remove()
       if (!streams.length) {
+        const local = localRows(onDisk(videoId), state)
+        if (local) return streamsSection.append(local)
         streamsSection.append(h(`
           <div class="empty" style="padding:36px">
             <h2>No streams</h2>
@@ -121,6 +128,8 @@ export default async function detail ({ params, query = {}, container }) {
       }
       const list = h('<div class="stream-list"></div>')
       streams.forEach(stream => list.append(streamRow(stream, { type, meta, state })))
+      const local = localRows(onDisk(videoId), state)
+      if (local) streamsSection.append(local)
       const { bar, more } = narrowing(streams, list)
       streamsSection.append(bar, list, more)
     } catch (err) {
@@ -263,7 +272,7 @@ function hero (meta, { inLibrary, primary, play }) {
 // The episode list, Netflix-style: a tick on what has been watched, a bar on
 // what is part-way through, the air date on what is not out yet — and a way
 // to mark an episode watched by hand, as Stremio has.
-function renderEpisodes (meta, state, progress, onPick, onWatched) {
+function renderEpisodes (meta, state, progress, onDisk, onPick, onWatched) {
   const wrap = h('<div></div>')
   const videos = episodeOrder(meta.videos)
   const seasons = [...new Set(videos.map(video => video.season))]
@@ -286,7 +295,7 @@ function renderEpisodes (meta, state, progress, onPick, onWatched) {
           <div class="tag">${watched ? '✓ ' : ''}E${esc(video.episode)}</div>
           <div class="body">
             <div class="name">${esc(video.name || video.title || `Episode ${video.episode}`)}</div>
-            <div class="detail">${esc(when)}${video.overview ? ` — ${esc(video.overview.slice(0, 160))}` : ''}</div>
+            <div class="detail">${onDisk(video.id).some(torrent => torrent.progress >= 1) ? '<span class="on-disk">⭳ On disk</span> ' : ''}${esc(when)}${video.overview ? ` — ${esc(video.overview.slice(0, 160))}` : ''}</div>
             ${partway ? `<div class="ep-progress"><i style="width:${percent(partway)}"></i></div>` : ''}
           </div>
           <div class="actions">
@@ -381,6 +390,35 @@ function renderEpisodes (meta, state, progress, onPick, onWatched) {
 }
 
 /* ---------------------------------------------------------------- streams */
+
+// Copies already downloaded, above the add-ons' streams — the big Play button
+// takes the first row, so a finished download is what plays, as Netflix plays
+// a downloaded episode rather than streaming it again. One still downloading
+// can be watched while it finishes.
+function localRows (copies, state) {
+  if (!copies.length) return null
+  const list = h('<div class="stream-list local-list"></div>')
+  for (const copy of copies.slice(0, 2)) {
+    const done = copy.progress >= 1
+    const fileIdx = copy.fileIdx ?? copy.playableIndex ?? ''
+    const row = h(`
+      <div class="stream best local">
+        <div class="tag">${done ? 'On disk' : esc(`${Math.floor(copy.progress * 100)}%`)}</div>
+        <div class="body">
+          <div class="name">${esc(copy.name)}</div>
+          <div class="detail">${done ? 'Downloaded to this computer — plays without the internet' : 'Downloading — plays while it finishes'} · ${esc(bytes(copy.length))}</div>
+        </div>
+        <div class="actions"><button class="btn primary small" data-act="play">▶ Play</button></div>
+      </div>`)
+    row.querySelector('[data-act="play"]').addEventListener('click', () => {
+      const from = state.fromStart ? '&from=start' : ''
+      state.fromStart = false
+      location.hash = `#/player/torrent/${encodeURIComponent(copy.id)}?fileIdx=${fileIdx}&meta=${encodeURIComponent(JSON.stringify(copy.meta || {}))}${from}`
+    })
+    list.append(row)
+  }
+  return list
+}
 
 const FIRST_STREAMS = 10
 const RESOLUTION_ORDER = ['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p']
