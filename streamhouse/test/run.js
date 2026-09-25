@@ -106,6 +106,10 @@ console.log('\nSizes, seeders and groups on their own')
   eq('bracketed group', parseGroup('Movie 2021 1080p [YTS]'), 'YTS')
   eq('extension is not a group', parseGroup('Movie.2021.1080p.WEB-DL-NTb.mkv'), 'NTb')
   eq('a codec is not a group', parseGroup('Movie.2021.1080p-x264'), null)
+  eq('DTS-HD audio is not a group', parseGroup('Movie.2021.2160p.BluRay.HEVC.DTS-HD.mkv'), null)
+  eq('nor what follows WEB-DL', parseGroup('Movie.2021.1080p.WEB-DL.x264.AAC.mkv'), null)
+  eq('nor DTS-HD.MA', parseGroup('Movie.2021.2160p.BluRay.DTS-HD.MA.5.1'), null)
+  eq('a group after DTS-HD.MA still is', parseGroup('Movie.2021.2160p.BluRay.REMUX.HEVC.DTS-HD.MA.7.1-FGT'), 'FGT')
   eq('stats are not a group', parseGroup('Movie.2021.1080p-NTb 👤 47 💾 2 GB'), 'NTb')
 }
 

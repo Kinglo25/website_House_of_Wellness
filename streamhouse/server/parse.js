@@ -82,7 +82,7 @@ const EDITIONS = [
 ]
 
 // Tokens that turn up at the end of a release name but are never the group.
-const NOT_A_GROUP = /^(?:\d+|\d+p|mkv|mp4|avi|x?26[45]|hevc|avc|aac|ac3|dts|web|dl|rip|hdtv|bluray|remux|hdr|sdr|multi|dual|repack|proper)$/i
+const NOT_A_GROUP = /^(?:\d+|\d+p|mkv|mp4|avi|x?26[45]|hevc|avc|aac|ac3|dts|hd|web|dl|rip|hdtv|bluray|remux|hdr|sdr|multi|dual|repack|proper)$/i
 
 function firstMatch (matchers, text) {
   for (const [value, pattern] of matchers) {
@@ -123,8 +123,10 @@ export function parseGroup (name) {
     .trim().replace(VIDEO_EXTENSION, '')
   const bracketed = /[[(]([A-Za-z][\w.-]{1,20})[\])]\s*$/.exec(line)
   if (bracketed && !NOT_A_GROUP.test(bracketed[1])) return bracketed[1]
+  // Judged by its first dotted part, so the tail of a name with no group at all —
+  // "WEB-DL.x264.AAC", "DTS-HD.MA.5.1" — is not read as one.
   const trailing = /-([A-Za-z][\w.]{1,20})\s*$/.exec(line)
-  if (trailing && !NOT_A_GROUP.test(trailing[1])) return trailing[1]
+  if (trailing && !NOT_A_GROUP.test(trailing[1].split('.')[0])) return trailing[1]
   return null
 }
 
