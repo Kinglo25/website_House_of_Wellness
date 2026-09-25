@@ -1,4 +1,5 @@
 import { JsonStore } from './store.js'
+import { explainInstallError, INSTALL_HINT } from './addon-errors.js'
 
 // A client for the Stremio add-on protocol.
 //
@@ -148,9 +149,14 @@ class AddonManager {
 
   async install (url) {
     const transportUrl = normalizeTransportUrl(url)
-    const manifest = await getJson(transportUrl, { useCache: false })
+    let manifest
+    try {
+      manifest = await getJson(transportUrl, { useCache: false })
+    } catch (err) {
+      throw Object.assign(new Error(explainInstallError(err)), { status: 400 })
+    }
     if (!manifest?.id || !Array.isArray(manifest.resources)) {
-      throw new Error('That URL did not return a valid Stremio add-on manifest')
+      throw Object.assign(new Error(`That address answers, but not as an add-on. ${INSTALL_HINT}`), { status: 400 })
     }
     const addons = this.list()
     const existing = addons.findIndex(addon => addon.transportUrl === transportUrl || addon.manifest?.id === manifest.id)

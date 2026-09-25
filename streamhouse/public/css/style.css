@@ -407,7 +407,7 @@ select.field option { background: var(--bg-elevated); }
 .setting .label { flex: 1; }
 .setting .label b { display: block; margin-bottom: 3px; }
 .setting .control { flex: 0 0 220px; }
-.switch { width: 46px; height: 26px; border-radius: 14px; background: rgba(255,255,255,0.15); position: relative; cursor: pointer; flex: 0 0 46px; transition: background 0.15s; }
+.switch { border: 0; padding: 0; width: 46px; height: 26px; border-radius: 14px; background: rgba(255,255,255,0.15); position: relative; cursor: pointer; flex: 0 0 46px; transition: background 0.15s; }
 .switch i { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
 .switch.on { background: var(--accent); }
 .switch.on i { transform: translateX(20px); }
@@ -506,7 +506,10 @@ select.field option { background: var(--bg-elevated); }
   /* In the player the phone's own volume keys do this job. */
   .player-top { padding: 12px 14px; gap: 8px; flex-wrap: wrap; }
   .player-bottom { padding: 12px 14px calc(14px + env(safe-area-inset-bottom)); }
-  .player-controls { gap: 8px; }
+  .player-controls { gap: 8px; flex-wrap: wrap; }
+  .player-controls .time { white-space: nowrap; font-size: 12px; }
+  .player-controls .grow { flex-basis: 0; }
+  .player-controls select.field { padding: 6px 8px; font-size: 12px; max-width: 42vw; }
   .vol { display: none; }
 }
 
@@ -605,3 +608,292 @@ html.tv .player-controls .time { font-size: 20px; }
 .device .screen { font-size: 22px; flex: 0 0 auto; }
 .device .sub { color: var(--muted); font-size: 12.5px; }
 html.tv .device { padding: 20px; }
+
+/* "Remove from row": on the tile, where a phone or a remote can reach it. Shown
+   on hover with a mouse, always on touch screens and the TV. */
+.card .remove {
+  position: absolute; top: 6px; right: 6px;
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.72);
+  color: #fff; font-size: 13px; line-height: 1; cursor: pointer;
+  opacity: 0; transition: opacity 0.15s;
+}
+.card:hover .remove, .card:focus-within .remove, .card .remove:focus-visible { opacity: 1; }
+@media (hover: none) { .card .remove { opacity: 1; } }
+/* On a TV the × stays out of the way until OK is held on the tile. */
+html.tv .card .remove { opacity: 0; width: 44px; height: 44px; font-size: 19px; }
+html.tv .card.armed .remove { opacity: 1; }
+html.tv .card.armed .poster { outline: 3px solid var(--red); }
+
+/* Episodes: the one picked, the ones not out yet, and how far into one you are */
+.stream.episode.active { border-color: rgba(123,91,245,.6); background: rgba(123,91,245,.08); }
+.stream.episode.unaired { opacity: 0.55; }
+.stream.episode .ep-progress { height: 4px; border-radius: 2px; background: var(--surface-strong); margin-top: 8px; max-width: 320px; overflow: hidden; }
+.stream.episode .ep-progress i { display: block; height: 100%; background: var(--accent); }
+
+/* Scrubbing: the time under the finger or pointer, and a bigger target to hit */
+.seek { touch-action: none; }
+.seek::before { content: ''; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }
+.seek .seek-tip {
+  position: absolute; bottom: 16px; transform: translateX(-50%);
+  background: rgba(0,0,0,0.85); color: #fff; border-radius: 6px;
+  padding: 3px 8px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+  pointer-events: none; white-space: nowrap;
+}
+/* A double tap on either side, answered where it landed */
+.seek-flash {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  padding: 14px 20px; border-radius: 40px; background: rgba(0,0,0,0.55);
+  font-weight: 700; font-size: 18px; pointer-events: none;
+  animation: seek-flash 0.65s ease-out forwards;
+}
+.seek-flash.back { left: 12%; }
+.seek-flash.fwd { right: 12%; }
+@keyframes seek-flash { from { opacity: 1; } to { opacity: 0; } }
+
+/* Subtitle size, chosen in the player's Aa panel */
+.player-wrap.sub-s video::cue { font-size: 70%; }
+.player-wrap.sub-l video::cue { font-size: 145%; }
+.player-wrap video::cue { background: rgba(0,0,0,0.6); }
+.sub-panel {
+  position: absolute; right: 24px; bottom: 100%; margin-bottom: 6px;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px; border-radius: var(--radius);
+  background: rgba(14,15,26,0.94); border: 1px solid var(--border);
+}
+.sub-panel .row { gap: 8px; align-items: center; }
+.sub-panel .row > span { width: 52px; }
+.sub-panel .delay { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Toasts only ever say something, so they never swallow a click meant for what
+   is under them — the player's controls sit exactly where they appear. */
+#toasts { pointer-events: none; }
+/* In the player, they go to the top, clear of the controls. */
+body:has(#player-root .player-wrap) #toasts {
+  top: 76px; bottom: auto; left: 50%; right: auto; transform: translateX(-50%); align-items: center;
+}
+
+/* "Mark season watched", at the end of the season tabs */
+.season-mark { margin-left: auto; }
+
+/* Library: kind chips, then the sort menu at the end of the row */
+.library-controls { margin: 4px 0 16px; }
+.library-controls .library-sort { width: auto; margin-left: auto; }
+
+/* Library: new and upcoming episodes of the shows you follow */
+.calendar { display: flex; flex-direction: column; gap: 6px; margin-bottom: 26px; max-width: 760px; }
+.calendar-row {
+  display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1.4fr); gap: 14px; align-items: center;
+  padding: 10px 14px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border); color: inherit; text-decoration: none;
+}
+.calendar-row:hover, .calendar-row:focus { border-color: rgba(123,91,245,0.5); }
+.calendar-row .when { color: var(--accent-2, #a48dff); font-weight: 700; font-size: 13px; }
+.calendar-row .show { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-row .ep { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 700px) {
+  .calendar-row { grid-template-columns: 76px minmax(0, 1fr); }
+  .calendar-row .ep { grid-column: 2; }
+}
+
+/* Home billboard: one featured title, Netflix-style, inside the page margins */
+.billboard {
+  position: relative; overflow: hidden;
+  min-height: 380px; margin-bottom: 8px; padding: 40px;
+  display: flex; align-items: flex-end;
+  border-radius: 18px; border: 1px solid var(--border);
+  background: var(--bg-elevated) center 20%/cover no-repeat;
+}
+.billboard::before {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(11,11,23,0.95) 0%, rgba(11,11,23,0.7) 45%, rgba(11,11,23,0.15) 100%),
+              linear-gradient(0deg, rgba(11,11,23,0.85) 0%, rgba(11,11,23,0) 55%);
+}
+.billboard .info { position: relative; max-width: 600px; }
+.billboard .eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; font-weight: 700; color: var(--muted); }
+.billboard h1 { font-size: 40px; line-height: 1.08; margin: 6px 0 10px; }
+.billboard .facts { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; color: var(--muted); align-items: center; }
+.billboard .desc { color: #d3d5ea; line-height: 1.55; margin-bottom: 18px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.billboard .cta { display: flex; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 860px) {
+  .billboard { min-height: 300px; padding: 22px 18px; border-radius: 14px; }
+  .billboard h1 { font-size: 28px; }
+  .billboard .desc { -webkit-line-clamp: 2; }
+}
+html.tv .billboard { min-height: 520px; padding: 56px; }
+html.tv .billboard h1 { font-size: 56px; }
+html.tv .billboard .eyebrow { font-size: 15px; }
+
+/* Narrowing a long stream list */
+.stream-filters { margin: 0 0 12px; }
+.stream-filters:empty { display: none; }
+.show-all { margin-top: 10px; }
+
+/* A copy already on this computer */
+.stream.local .tag { background: rgba(58,196,125,0.16); color: var(--green); }
+.local-list { margin-bottom: 10px; }
+.on-disk { color: var(--green); font-weight: 600; }
+
+/* The player's ? overlay */
+.player-wrap .shortcuts {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  min-width: 320px; padding: 22px 26px; border-radius: var(--radius);
+  background: rgba(14,15,26,0.95); border: 1px solid var(--border); z-index: 5;
+}
+.player-wrap .shortcuts h3 { margin: 0 0 12px; }
+.player-wrap .shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin: 0 0 12px; }
+.player-wrap .shortcuts dt { white-space: nowrap; }
+.player-wrap .shortcuts dd { margin: 0; color: #d3d5ea; }
+kbd { display: inline-block; min-width: 22px; padding: 2px 6px; border-radius: 5px; text-align: center;
+  background: var(--surface-strong); border: 1px solid var(--border); font: 600 12px/1.4 inherit; }
+
+/* ---------------------------------------------------------------- profiles */
+.avatar {
+  display: inline-grid; place-items: center; flex: 0 0 auto;
+  width: 30px; height: 30px; border-radius: 8px;
+  color: #fff; font-weight: 800; font-size: 15px; text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.avatar.lg { width: 44px; height: 44px; font-size: 20px; border-radius: 10px; }
+.avatar.xl { width: 128px; height: 128px; font-size: 56px; border-radius: 18px; }
+
+/* "Who's watching?" */
+.who {
+  position: fixed; inset: 0; z-index: 400;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px;
+  background: var(--bg); padding: 24px;
+}
+.who h1 { font-size: 40px; margin: 0; }
+.who-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 28px; }
+.who-pick {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px; border-radius: 20px;
+}
+.who-pick .avatar { transition: transform 0.15s, box-shadow 0.15s; }
+.who-pick:hover, .who-pick:focus-visible, .who-pick:focus { color: var(--text); outline: none; }
+.who-pick:hover .avatar, .who-pick:focus .avatar { transform: scale(1.06); box-shadow: 0 0 0 4px var(--text); }
+.who-name { font-size: 18px; font-weight: 600; }
+@media (max-width: 700px) {
+  .who h1 { font-size: 28px; }
+  .avatar.xl { width: 96px; height: 96px; font-size: 42px; }
+}
+html.tv .avatar.xl { width: 180px; height: 180px; font-size: 80px; }
+html.tv .who h1 { font-size: 56px; }
+html.tv .who-name { font-size: 24px; }
+
+/* The avatar in the top bar */
+.who-button {
+  display: flex; align-items: center; gap: 8px; margin-left: 14px;
+  background: none; border: 1px solid transparent; border-radius: 10px; padding: 3px 8px 3px 3px;
+  color: var(--text); cursor: pointer; font-weight: 600;
+}
+.who-button:hover, .who-button:focus-visible { border-color: var(--border); background: var(--surface); }
+.who-button[hidden] { display: none; }
+@media (max-width: 860px) { .who-button .who-label { display: none; } }
+
+/* Settings → Profiles */
+.profiles-panel { flex-direction: column; align-items: stretch; }
+.profiles { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.profile-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.profile-row .field { width: 190px; }
+.swatches { display: flex; gap: 6px; }
+.swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.swatch.on { border-color: var(--text); }
+
+/* ------------------------------------------------------------- ergonomics */
+
+/* "See all" as the last tile of a row, on a TV only: where the remote already
+   is at the end of the row. Elsewhere the heading's link does the job. */
+.card.see-all { display: none; }
+html.tv .card.see-all { display: block; color: inherit; text-decoration: none; }
+html.tv .card.see-all .poster {
+  display: grid; place-items: center; font-size: 20px; font-weight: 700;
+  background: var(--surface); border-style: dashed;
+}
+
+/* Touch screens: every control at least ~40px to hit with a thumb (Apple and
+   Google both ask for 44–48). The search box's whole pill takes the tap, not
+   only its line of text. */
+@media (pointer: coarse) {
+  .search input { min-height: 40px; }
+  .btn.small { min-height: 40px; }
+  .chip { min-height: 38px; padding-top: 8px; padding-bottom: 8px; }
+  .card .remove { width: 36px; height: 36px; font-size: 15px; }
+  .swatch { width: 32px; height: 32px; }
+  .shelf-head a, .section-title .count a { display: inline-block; padding: 12px 4px; margin: -12px -4px; }
+  .switch { transform: scale(1.15); margin: 4px; }
+}
+
+/* A TV is read from across the room: nothing under 17px. */
+html.tv .tiny, html.tv .sub, html.tv .count, html.tv .detail, html.tv .stream .tag,
+html.tv .calendar-row .when, html.tv .calendar-row .ep, html.tv .shelf-head a, html.tv .shelf-head .src,
+html.tv .billboard .eyebrow, html.tv .badge, html.tv .card .ribbon, html.tv .status,
+html.tv .dl span, html.tv .muted, html.tv .card .sub, html.tv .stream .badge, html.tv .stream .name .pick { font-size: max(17px, 1em); }
+/* On a TV the row's own last tile says "See all"; the heading's link is out of
+   the remote's reach, so it is not shown. */
+html.tv .shelf-head a { display: none; }
+html.tv .card .ribbon { padding: 4px 9px; }
+
+/* Skip intro: over the picture, whether or not the controls are showing */
+.skip-intro {
+  position: absolute; right: 28px; bottom: 120px; z-index: 4;
+  background: rgba(14,15,26,0.88); border: 1px solid rgba(255,255,255,0.35);
+  font-size: 16px; padding: 12px 22px;
+}
+.skip-intro:hover, .skip-intro:focus-visible { background: #fff; color: #000; }
+html.tv .skip-intro { bottom: 170px; right: 48px; font-size: 22px; padding: 16px 30px; }
+@media (max-width: 700px) { .skip-intro { right: 14px; bottom: 150px; } }
+
+/* Sleep timer */
+.player-controls [data-act="sleep"].on { color: var(--amber); border-color: rgba(245,166,35,0.45); }
+.sleep-panel .row { gap: 8px; max-width: 360px; }
+.sleep-card {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 6;
+  padding: 26px 30px; border-radius: var(--radius); text-align: center;
+  background: rgba(14,15,26,0.95); border: 1px solid var(--border);
+}
+.sleep-card h3 { margin: 0 0 6px; }
+
+/* Trickplay: the frame under the pointer, above its time */
+.seek .seek-tip { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.seek .seek-tip canvas { width: 192px; height: 108px; border-radius: 6px; background: #000; border: 2px solid rgba(255,255,255,0.8); }
+.seek .seek-tip canvas[hidden] { display: none; }
+@media (max-width: 700px) { .seek .seek-tip canvas { width: 144px; height: 81px; } }
+
+/* The player is the most-thumbed screen of all: 44px controls on a touch screen. */
+@media (pointer: coarse) {
+  .player-wrap .btn.icon { min-width: 44px; min-height: 44px; }
+  .player-wrap select.field, .player-wrap .btn.small { min-height: 40px; }
+}
+
+/* A count or source inside a chosen chip stays readable on its purple */
+.chip.active .muted { color: rgba(255,255,255,0.8); }
+/* An add-on without a logo shows its initial */
+.addon .logo, .addon-row .logo { display: grid; place-items: center; font-weight: 800; font-size: 22px; color: var(--muted); }
+
+/* Row arrows: a mouse's way along a row. Over the posters, at the edges, on hover. */
+.shelf { position: relative; }
+.strip-nav {
+  position: absolute; top: 44px; height: calc(100% - 110px); width: 46px; z-index: 3;
+  border: 0; cursor: pointer; color: #fff; font-size: 40px; line-height: 1;
+  opacity: 0; transition: opacity 0.15s;
+}
+.strip-nav.prev { left: -8px; background: linear-gradient(90deg, rgba(11,11,23,0.92), rgba(11,11,23,0)); border-radius: 10px 0 0 10px; }
+.strip-nav.next { right: -8px; background: linear-gradient(270deg, rgba(11,11,23,0.92), rgba(11,11,23,0)); border-radius: 0 10px 10px 0; }
+.shelf:hover .strip-nav { opacity: 1; }
+.strip-nav:hover { color: var(--accent); }
+.strip-nav[hidden] { display: none; }
+/* A finger swipes and a remote steps; neither needs them. */
+@media (pointer: coarse) { .strip-nav { display: none; } }
+html.tv .strip-nav { display: none; }
+
+/* Room for a hovered tile to lift without its top being clipped by the row */
+.strip { padding-top: 6px; margin-top: -6px; }
+
+/* Breathing room between the billboard and the first row */
+.billboard-slot:not(:empty) { margin-bottom: 26px; }
+
+/* A long profile name keeps to its tile: every face the same width */
+.who-pick { width: 150px; }
+.who-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.tv .who-pick { width: 210px; }

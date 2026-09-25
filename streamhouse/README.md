@@ -154,6 +154,32 @@ The Downloads page gives you what a torrent client gives you:
 Downloads survive a restart: the app keeps each torrent's metadata, re-checks the data
 already on disk and picks up where it left off — even with no peers around.
 
+### Profiles: who is watching
+
+Each person in the house can have a profile, as on Netflix: their own *Continue
+watching*, watched episodes, *Up next*, calendar and library. Add-ons, downloads and
+settings stay shared. Add them under **Settings → Profiles** (up to six), with a name
+and a colour.
+
+With more than one profile, StreamHouse asks **Who's watching?** when it opens — once
+per browser tab, or per launch of the TV app — starting on whoever watched last, so on
+a TV one press of OK carries on. The avatar at the top right switches profile at any
+time. With only one profile nothing changes and nothing is asked.
+
+Profiles travel with an account: add one on the laptop and it is on the TV; remove one
+and its history goes on every device. The first profile keeps everything watched
+before profiles existed. A device still running an older StreamHouse sees only that
+first profile's history — and should be updated before a second profile saves the same
+title to its library, since an old device cannot tell the two saves apart.
+
+### Already downloaded
+
+A film or episode you downloaded shows up on its title page as **On this computer**,
+above the add-ons' streams, and the big Play button plays that copy — no internet
+needed, as Netflix plays a downloaded episode. One still downloading says how far it
+has got and can be watched while it finishes. Downloaded episodes carry **⭳ On disk**
+in the episode list.
+
 ## On your phone
 
 On an **Android phone**, install the same app as the TV
@@ -316,14 +342,69 @@ is fine and plays anywhere else.
 
 The player streams over HTTP byte ranges from the local engine, so seeking works while
 the file is still downloading. Keyboard: `space`/`k` play-pause, `←`/`→` 5s, `↑`/`↓`
-volume, `f` fullscreen, `m` mute, `esc` back.
+volume, `<`/`>` speed (0.5× to 2×), `g`/`h` subtitles a quarter-second earlier or later,
+`f` fullscreen, `m` mute, `esc` back, and `?` lists them all. The subtitle language you pick — or *off* — is
+remembered and chosen by itself next time, and **Aa** beside it sets their size
+(remembered) and timing (for this file), for the torrent whose subtitles run late.
+
+On a phone it behaves like the Netflix app: a tap shows or hides the controls, a double
+tap on the left or right of the picture jumps ten seconds, and the bar under the picture
+can be dragged with a finger, showing the time it will land on — and, for a direct
+stream or a torrent already fully downloaded, the frame there too, as Netflix and
+Jellyfin show it. (A torrent still downloading shows only the time, so scrubbing never
+pulls pieces from the network ahead of what is playing.) On a TV, any button on the
+remote brings the controls back, and they stay while paused. Holding OK on a *Continue
+watching* tile brings up its ✕, as holding it on a Netflix tile brings up its options.
 
 Playback position is remembered every ten seconds and whenever you leave the player, and
 shows up under *Continue watching* on the home page and in the library. A tile there goes
 straight back into the file it was playing, at the second it stopped — not to the title
 page. If the stream it came from has since gone (a cached stream cleaned up, a source that
 dried up), the player offers **Pick another stream**: choose a new one and it carries on
-from the same position. Titles watched to the end drop off the list by themselves.
+from the same position. Titles watched to the end drop off the list by themselves, and
+the × on a tile takes it off by hand.
+
+### Sleep timer
+
+**☾** in the player pauses after 15, 30 or 45 minutes, an hour, or at the end of what
+is playing — as Plex and Netflix do for whoever falls asleep in front of it. The button
+counts down; when it fires the film pauses, full screen closes, the place is saved, and
+**Keep watching** is one press away.
+
+### Skip intro
+
+Netflix, Plex and Jellyfin offer **Skip intro**; Plex and Jellyfin find the intro by
+analysing each file's audio, which StreamHouse cannot do for a stream it never holds
+whole. It learns from you instead: the first time you skip over a show's opening by
+hand — the +30 button, the seek bar, holding → on the remote — it remembers that span,
+and every other episode of the show offers **Skip intro** there, focused on a TV so one
+press of OK does it. Several quick skips count as one; a jump you take back teaches
+nothing. Skip a different span and that one is learned instead.
+
+### Where you are in a series
+
+StreamHouse remembers what you have finished, the way Netflix and Stremio do, not only
+where you stopped:
+
+- A series page opens on the season and episode you are up to, with that episode's
+  streams already listed. The big button says what it will do: **Resume S1:E3 · 12 min
+  left**, **Play S1:E4**, **S2:E1 airs 3 Oct** when you are caught up, or **Watch again**.
+  Beside a resume, **Start over** plays it from the beginning instead.
+- Episodes carry a ✓ once watched and a bar while part-way through; ones not out yet
+  show their air date. **Mark watched** sets or clears the tick by hand, and **Mark
+  season watched** does a whole season — a finished season's tab gets a ✓ too.
+- *Continue watching* has one tile per show, and after you finish an episode an
+  **Up next** tile offers the one after it.
+
+The **Library** keeps a calendar of the shows you have saved or watched, as Stremio's
+does: *New episodes* out in the last fortnight that you have not seen, and what is
+*Coming up* in the next month. Saved titles can be narrowed to films or series and
+sorted by when they were added, when they were last watched, A–Z or release year; the
+choice is remembered. Search results come in the same two groups.
+
+Watched episodes travel with your account like everything else: they are kept in the
+same progress list, so the account server needs no change. A device still running an
+older StreamHouse shows finished titles on its *Continue watching* until it is updated.
 
 ### Sound, and VLC
 

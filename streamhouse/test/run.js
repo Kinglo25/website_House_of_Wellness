@@ -8,6 +8,12 @@ import { parseStream, parseSize, parseSeeders, parseGroup } from '../server/pars
 import { rankStreams, scoreRelease } from '../server/rank.js'
 import { candidatePaths, playableUrl, isLoopback, vlcArgs, positionFrom } from '../server/vlc.js'
 import { fingerprint, localChanges, remoteWins } from '../server/merge.js'
+import { byteRange } from '../server/mime.js'
+import { explainInstallError } from '../server/addon-errors.js'
+import { introSpan, inIntro, skipTracker } from '../public/js/intro.js'
+import { MAIN, scopeKey, splitKey, progressOf, libraryOf, normalise, viewerOf } from '../server/viewers.js'
+import { recordPosition, setWatched, hide } from '../server/watching.js'
+import { inProgress, upNextCandidates, upNext, episodeLabel, sortLibrary, followedShows, episodeCalendar, continueRow, seriesOf } from '../public/js/watching.js'
 
 let passed = 0
 let failed = 0
@@ -88,6 +94,19 @@ console.log('\nParsing what add-ons actually send')
   eq('an empty stream does not throw', parseStream({}).releaseName, '')
 }
 
+console.log('\nByte ranges, as a player asks for them')
+{
+  const range = header => JSON.stringify(byteRange(header, 1000))
+  eq('a plain range', range('bytes=100-199'), '{"start":100,"end":199}')
+  eq('open-ended runs to the end', range('bytes=900-'), '{"start":900,"end":999}')
+  eq('a suffix is the last bytes, not the first', range('bytes=-100'), '{"start":900,"end":999}')
+  eq('a suffix longer than the file is all of it', range('bytes=-5000'), '{"start":0,"end":999}')
+  eq('an end past the file stops at the file', range('bytes=100-5000'), '{"start":100,"end":999}')
+  eq('a start past the file is unsatisfiable', range('bytes=1000-'), 'null')
+  eq('an empty suffix is unsatisfiable', range('bytes=-0'), 'null')
+  eq('no range at all is the whole file', range(undefined), '{"start":0,"end":999}')
+}
+
 console.log('\nSizes, seeders and groups on their own')
 {
   eq('GB', parseSize('2.31 GB'), Math.round(2.31 * 1024 ** 3))
@@ -106,6 +125,10 @@ console.log('\nSizes, seeders and groups on their own')
   eq('bracketed group', parseGroup('Movie 2021 1080p [YTS]'), 'YTS')
   eq('extension is not a group', parseGroup('Movie.2021.1080p.WEB-DL-NTb.mkv'), 'NTb')
   eq('a codec is not a group', parseGroup('Movie.2021.1080p-x264'), null)
+  eq('DTS-HD audio is not a group', parseGroup('Movie.2021.2160p.BluRay.HEVC.DTS-HD.mkv'), null)
+  eq('nor what follows WEB-DL', parseGroup('Movie.2021.1080p.WEB-DL.x264.AAC.mkv'), null)
+  eq('nor DTS-HD.MA', parseGroup('Movie.2021.2160p.BluRay.DTS-HD.MA.5.1'), null)
+  eq('a group after DTS-HD.MA still is', parseGroup('Movie.2021.2160p.BluRay.REMUX.HEVC.DTS-HD.MA.7.1-FGT'), 'FGT')
   eq('stats are not a group', parseGroup('Movie.2021.1080p-NTb 👤 47 💾 2 GB'), 'NTb')
 }
 
@@ -266,6 +289,236 @@ console.log('\nAccount sync: who wins')
   const removed = { kind: 'progress', key: 'tt1', value: null, updatedAt: 2500 }
   ok('a deletion from elsewhere removes an untouched item', remoteWins({ remote: removed, local: older.value, agreed: fingerprint(older.value), stamp }))
   ok('but not one this device has watched further since', !remoteWins({ remote: removed, local: newer.value, agreed: fingerprint(older.value), stamp }))
+}
+
+console.log('\nWatched, and how far')
+{
+  const all = {}
+  const film = { type: 'movie', imdbId: 'tt9' }
+  eq('part-way through is kept with its place', recordPosition(all, { id: 'tt9', time: 600, duration: 6000, meta: film }, 1)?.time, 600)
+  ok('and is not yet watched', !all.tt9.watched)
+  const done = recordPosition(all, { id: 'tt9', time: 5900, duration: 6000 }, 2)
+  ok('the credits count as the end: watched, place reset', done.watched === true && done.time === 0, JSON.stringify(done))
+  eq('the title it was saved with is kept', all.tt9.meta?.imdbId, 'tt9')
+  recordPosition(all, { id: 'tt9', time: 120, duration: 6000 }, 3)
+  ok('watching it again keeps the tick', all.tt9.watched === true && all.tt9.time === 120)
+  recordPosition(all, { id: 'tt9', time: 0, duration: 6000 }, 4)
+  ok('back at the start, still watched', all.tt9?.watched === true)
+  recordPosition(all, { id: 'new', time: 0, duration: 100 }, 5)
+  ok('a position of nothing for something never watched stores nothing', !('new' in all))
+
+  setWatched(all, { id: 'ep1', watched: true, meta: { type: 'series', imdbId: 'tt1' } }, 6)
+  ok('marked watched by hand', all.ep1.watched === true && all.ep1.time === 0)
+  setWatched(all, { id: 'ep1', watched: false }, 7)
+  ok('and unmarked, gone again', !('ep1' in all))
+  recordPosition(all, { id: 'ep2', time: 300, duration: 1200 }, 8)
+  setWatched(all, { id: 'ep2', watched: true }, 9)
+  setWatched(all, { id: 'ep2', watched: false }, 10)
+  ok('unmarking something never finished leaves nothing to resume', !('ep2' in all))
+
+  recordPosition(all, { id: 'ep3', time: 300, duration: 1200 }, 11)
+  hide(all, 'ep3', 12)
+  ok('removing a part-watched episode from the row forgets it', !('ep3' in all))
+  recordPosition(all, { id: 'tt9', time: 120, duration: 6000 }, 13)
+  hide(all, 'tt9', 14)
+  ok('removing a rewatch keeps the tick, drops the place', all.tt9.watched === true && all.tt9.time === 0)
+  hide(all, 'tt9', 15)
+  ok('removing a finished one stops it offering what is next', all.tt9.hidden === true && all.tt9.watched === true)
+  recordPosition(all, { id: 'tt9', time: 5990, duration: 6000 }, 16)
+  ok('finishing it again brings it back', !all.tt9.hidden)
+}
+
+console.log('\nWhat to watch next')
+{
+  const day = 864e5
+  const now = Date.parse('2026-06-01T00:00:00Z')
+  const ep = (season, episode, released = '2026-01-01T00:00:00Z') => ({ id: `tt1:${season}:${episode}`, season, episode, released })
+  const videos = [ep(1, 2), ep(0, 1), ep(1, 1), ep(2, 1), ep(2, 2, '2026-07-01T00:00:00Z'), ep(1, 3)]
+  const series = { type: 'series', imdbId: 'tt1' }
+  const at = (id, entry) => ({ [id]: { id, meta: series, duration: 1200, ...entry } })
+
+  eq('nothing watched: the first episode, not a special', upNext(videos, {}, now)?.video.id, 'tt1:1:1')
+  eq('…and it says so', upNext(videos, {}, now)?.action, 'start')
+  const part = upNext(videos, at('tt1:1:2', { time: 400, updatedAt: 5 }), now)
+  ok('part-way through: carry on with that episode', part.action === 'resume' && part.video.id === 'tt1:1:2')
+  const next = upNext(videos, at('tt1:1:3', { time: 0, watched: true, updatedAt: 5 }), now)
+  ok('finished the season: the next season opens', next.action === 'next' && next.video.id === 'tt1:2:1', JSON.stringify(next))
+  const mixed = { ...at('tt1:2:1', { time: 0, watched: true, updatedAt: 3 }), ...at('tt1:1:1', { time: 0, watched: true, updatedAt: 9 }) }
+  eq('it goes on from the one watched last, not the furthest', upNext(videos, mixed, now)?.video.id, 'tt1:1:2')
+  const waiting = upNext(videos, at('tt1:2:1', { time: 0, watched: true, updatedAt: 5 }), now)
+  ok('the next one has not aired: it says so', waiting.action === 'upcoming' && waiting.video.id === 'tt1:2:2', JSON.stringify(waiting))
+  const all = upNext(videos, at('tt1:2:2', { time: 0, watched: true, updatedAt: 5 }), now + 60 * day)
+  ok('everything out is watched: start again', all.action === 'again' && all.video.id === 'tt1:1:1')
+  eq('nothing aired yet: nothing to offer', upNext([ep(1, 1, '2027-01-01T00:00:00Z')], {}, now), null)
+  const season = { ...at('tt1:1:1', { time: 0, watched: true, updatedAt: 7 }), ...at('tt1:1:2', { time: 0, watched: true, updatedAt: 7 }), ...at('tt1:1:3', { time: 0, watched: true, updatedAt: 7 }) }
+  eq('a season marked at once goes on to the next season', upNext(videos, season, now)?.video.id, 'tt1:2:1')
+  eq('labelled as Netflix does', episodeLabel(ep(2, 5)), 'S2:E5')
+
+  const progress = {
+    a: { id: 'a', time: 100, updatedAt: 1, meta: series },
+    b: { id: 'b', time: 200, updatedAt: 3, meta: series },
+    film: { id: 'film', time: 50, updatedAt: 2, meta: { type: 'movie', imdbId: 'tt5' } },
+    done: { id: 'done', time: 0, watched: true, updatedAt: 4, meta: { type: 'movie', imdbId: 'tt6' } }
+  }
+  eq('continue watching is one tile per show, newest first', inProgress(progress).map(entry => entry.id).join(','), 'b,film')
+  const shows = {
+    x1: { id: 'x1', time: 0, watched: true, updatedAt: 5, meta: { type: 'series', imdbId: 'x' } },
+    y1: { id: 'y1', time: 0, watched: true, updatedAt: 2, meta: { type: 'series', imdbId: 'y' } },
+    y2: { id: 'y2', time: 30, updatedAt: 3, meta: { type: 'series', imdbId: 'y' } },
+    z1: { id: 'z1', time: 0, watched: true, hidden: true, updatedAt: 4, meta: { type: 'series', imdbId: 'z' } }
+  }
+  eq('up next: shows whose latest episode was finished, not hidden', upNextCandidates(shows).map(entry => entry.id).join(','), 'x1')
+}
+
+console.log('\nThe library, sorted and filtered')
+{
+  const items = [
+    { id: 'a', type: 'movie', name: 'alpha', releaseInfo: '1999', addedAt: 3 },
+    { id: 'b', type: 'series', name: 'Bravo', releaseInfo: '2015–2019', addedAt: 1 },
+    { id: 'c', type: 'movie', name: 'Charlie 10', releaseInfo: '2021', addedAt: 2 },
+    { id: 'd', type: 'movie', name: 'Charlie 9', addedAt: 4 }
+  ]
+  const progress = {
+    'b:1:2': { id: 'b:1:2', updatedAt: 50, meta: { type: 'series', imdbId: 'b' } },
+    c: { id: 'c', updatedAt: 20, meta: { type: 'movie', imdbId: 'c' } }
+  }
+  const order = (options) => sortLibrary(items, progress, options).map(item => item.id).join('')
+  eq('recently added first', order({ sort: 'added' }), 'dacb')
+  eq('recently watched, a show by its latest episode, the unwatched after', order({ sort: 'watched' }), 'bcda')
+  eq('A–Z ignores case and counts numbers as numbers', order({ sort: 'name' }), 'abdc')
+  eq('newest release first, undated last', order({ sort: 'year' }), 'cbad')
+  eq('films only', order({ type: 'movie' }), 'dac')
+}
+
+console.log('\nNew and upcoming episodes')
+{
+  const day = 864e5
+  const now = Date.parse('2026-06-15T12:00:00Z')
+  const iso = offset => new Date(now + offset * day).toISOString()
+  const show = (id, days) => ({ meta: { id, name: id }, videos: days.map((offset, i) => ({ id: `${id}:1:${i + 1}`, season: 1, episode: i + 1, released: iso(offset) })) })
+  const shows = [show('a', [-40, -10, -2, 5]), show('b', [-1, 20, 45]), show('c', [])]
+  const { fresh, upcoming } = episodeCalendar(shows, { 'a:1:3': { id: 'a:1:3', watched: true } }, { now })
+  eq('out lately and not watched, newest first', fresh.map(item => item.video.id).join(','), 'b:1:1,a:1:2')
+  eq('coming up within a month, soonest first', upcoming.map(item => item.video.id).join(','), 'a:1:4,b:1:2')
+  const library = [{ id: 'x', type: 'series', addedAt: 5 }, { id: 'm', type: 'movie', addedAt: 9 }]
+  const watching = { e: { id: 'y:1:1', updatedAt: 7, meta: { type: 'series', imdbId: 'y' } } }
+  eq('shows to check: saved series and ones watched, not films', followedShows(library, watching).map(item => item.id).join(','), 'y,x')
+}
+
+console.log('\nProfiles: whose is what')
+{
+  eq('the main profile keeps keys as they always were', scopeKey(MAIN, 'tt1:1:2'), 'tt1:1:2')
+  eq('another profile\'s are prefixed', scopeKey('ab12', 'tt1:1:2'), 'p:ab12:tt1:1:2')
+  eq('and read back', JSON.stringify(splitKey('p:ab12:tt1:1:2')), '{"viewer":"ab12","key":"tt1:1:2"}')
+  eq('an ordinary key is the main profile\'s', splitKey('tt1:1:2').viewer, MAIN)
+  eq('a key that merely starts with p is not a prefix', splitKey('p:NOT VALID:x').viewer, MAIN)
+
+  const all = {
+    'tt1': { id: 'tt1', time: 5 },
+    'p:kid:tt1': { id: 'p:kid:tt1', time: 50 },
+    'p:kid:tt2': { id: 'p:kid:tt2', time: 7 }
+  }
+  eq('each profile sees only its own progress', Object.keys(progressOf(all, MAIN)).join(','), 'tt1')
+  eq('under the keys it knows', Object.keys(progressOf(all, 'kid')).join(','), 'tt1,tt2')
+  eq('with ids to match', progressOf(all, 'kid').tt1.id + ' ' + progressOf(all, 'kid').tt1.time, 'tt1 50')
+
+  const items = [{ id: 'a' }, { id: 'a', viewer: 'kid' }, { id: 'b', viewer: 'kid' }]
+  eq('and only its own library', libraryOf(items, 'kid').map(item => item.id).join(','), 'a,b')
+  eq('the main one\'s is what has no owner', libraryOf(items).length, 1)
+
+  const list = normalise([{ id: 'kid', name: '  Sam  ' }, { id: 'kid', name: 'dup' }, { id: 'BAD ID', name: 'x' }, { id: MAIN, name: '' }])
+  eq('a list is made whole: main first, no duplicates or bad ids', list.map(viewer => `${viewer.id}=${viewer.name}`).join(','), 'main=Me,kid=Sam')
+  eq('there is always a main profile', normalise([]).map(viewer => viewer.id).join(','), MAIN)
+  const request = header => ({ get: name => (name === 'x-viewer' ? header : undefined) })
+  eq('a request names its profile', viewerOf(request('kid'), list), 'kid')
+  eq('one naming a profile that is gone gets the main one', viewerOf(request('gone'), list), MAIN)
+  eq('as does one naming none', viewerOf(request(undefined), list), MAIN)
+}
+
+console.log('\nSkip intro, learned from skipping')
+{
+  eq('a jump over the opening is an intro', JSON.stringify(introSpan(62.4, 151.9)), '{"start":62,"end":151}')
+  eq('not one that starts twenty minutes in', introSpan(1200, 1290), null)
+  eq('not a five-second nudge', introSpan(60, 65), null)
+  eq('not a jump to the end of the film', introSpan(30, 5400), null)
+  ok('the button shows during the intro', inIntro({ start: 60, end: 150 }, 61) && inIntro({ start: 60, end: 150 }, 140))
+  ok('and not before it or at its very end', !inIntro({ start: 60, end: 150 }, 40) && !inIntro({ start: 60, end: 150 }, 148))
+
+  // a clock and a scheduler the test drives
+  let clock = 0
+  const jobs = []
+  const learned = []
+  const tracker = () => skipTracker(span => learned.push(span), {
+    now: () => clock,
+    schedule: (fn, ms) => { const job = { fn, at: clock + ms }; jobs.push(job); return job },
+    cancel: job => { const i = jobs.indexOf(job); if (i >= 0) jobs.splice(i, 1) }
+  })
+  const run = () => { for (const job of jobs.splice(0).filter(job => job.at <= clock)) job.fn() }
+
+  const plusThirty = tracker()
+  plusThirty.seek(70, 100); clock += 800; plusThirty.seek(100, 130); clock += 700; plusThirty.seek(130, 160)
+  clock += 3500; run()
+  eq('three presses of +30 are one skip', JSON.stringify(learned.pop()), '{"start":70,"end":160}')
+
+  const overshot = tracker()
+  overshot.seek(70, 400); clock += 1000; overshot.seek(400, 150)
+  clock += 3500; run()
+  eq('a jump taken back teaches nothing', learned.length, 0)
+
+  const apart = tracker()
+  apart.seek(70, 78); clock += 5000; run(); apart.seek(78, 86); clock += 3500; run()
+  eq('skips far apart in time are not joined', learned.length, 0)
+
+  const leaving = tracker()
+  leaving.seek(40, 120); leaving.flush()
+  eq('leaving the player keeps a skip just made', JSON.stringify(learned.pop()), '{"start":40,"end":120}')
+}
+
+console.log('\nInstalling an add-on: what went wrong, in words')
+{
+  const says = (err, pattern) => pattern.test(explainInstallError(err))
+  ok('a typo is not a web address', says(new TypeError('Failed to parse URL from https://not a url/manifest.json'), /not a web address/))
+  ok('a web page is not an add-on', says(new SyntaxError('Unexpected token \'<\', "<!doctype "... is not valid JSON'), /web page, not an add-on/))
+  ok('a 404 is nothing at that address', says(new Error('HTTP 404 for https://x/manifest.json'), /Nothing is at that address/))
+  ok('another status is the server\'s error', says(new Error('HTTP 503 for https://x'), /server answered with an error \(503\)/))
+  ok('no answer in time', says(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }), /did not answer in time/))
+  ok('an unreachable host', says(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } }), /Could not reach/))
+  ok('none of them repeat the raw message', !/Unexpected token|parse URL/.test(explainInstallError(new SyntaxError('Unexpected token <'))))
+}
+
+console.log('\nContinue watching: one tile per show')
+{
+  const show = { type: 'series', imdbId: 'tt1' }
+  const row = all => continueRow(all).map(item => `${item.kind}:${item.entry.id}`).join(',')
+
+  // Stopped part-way through E2, then watched E3 to the end: the show once,
+  // offering E4 — not E2 again beside it.
+  eq('an older half-watched episode does not come back beside Up next', row({
+    'tt1:1:2': { id: 'tt1:1:2', time: 600, duration: 2600, updatedAt: 5, meta: show },
+    'tt1:1:3': { id: 'tt1:1:3', time: 0, watched: true, updatedAt: 9, meta: show }
+  }), 'next:tt1:1:3')
+  eq('and the other way round: the half-watched one, newest, is the tile', row({
+    'tt1:1:3': { id: 'tt1:1:3', time: 0, watched: true, updatedAt: 5, meta: show },
+    'tt1:1:4': { id: 'tt1:1:4', time: 300, duration: 2600, updatedAt: 9, meta: show }
+  }), 'resume:tt1:1:4')
+
+  // Saved with no details, as the TV app's own player saves them.
+  eq('an episode id names its show', seriesOf({ id: 'tt1:2:7' }), 'tt1')
+  eq('a film is not taken for an episode', seriesOf({ id: 'tt9', meta: { type: 'movie', imdbId: 'tt9' } }), null)
+  eq('nor is an id of another shape', seriesOf({ id: 'some-film' }), null)
+  eq('episodes saved without details are still one show', row({
+    'tt1:1:1': { id: 'tt1:1:1', time: 300, duration: 2600, updatedAt: 3 },
+    'tt1:1:2': { id: 'tt1:1:2', time: 400, duration: 2600, updatedAt: 4 }
+  }), 'resume:tt1:1:2')
+
+  eq('films and shows side by side, newest first', row({
+    film: { id: 'film', time: 50, updatedAt: 7, meta: { type: 'movie', imdbId: 'film' } },
+    'tt1:1:1': { id: 'tt1:1:1', time: 20, updatedAt: 8, meta: show },
+    'tt2:1:1': { id: 'tt2:1:1', time: 0, watched: true, updatedAt: 6, meta: { type: 'series', imdbId: 'tt2' } }
+  }), 'resume:tt1:1:1,resume:film,next:tt2:1:1')
+  eq('a finished show taken off the row stays off', row({
+    'tt1:1:1': { id: 'tt1:1:1', time: 0, watched: true, hidden: true, updatedAt: 8, meta: show }
+  }), '')
 }
 
 /* -------------------------------------------------------------------- done */

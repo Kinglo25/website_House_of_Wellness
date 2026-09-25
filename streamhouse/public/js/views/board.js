@@ -1,6 +1,7 @@
 import { api } from '../api.js'
 import { h, bytes, esc } from '../util.js'
-import { metaCard, continueCard, shelf, skeletonStrip, emptyState, errorBox } from '../components.js'
+import { metaCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox, detailHref, seeAllCard, withShowDetails } from '../components.js'
+import { continueRow, seriesOf, upNext } from '../watching.js'
 
 // Home. Continue watching, whatever is downloading right now, then the first
 // page of every catalogue the installed add-ons expose.
@@ -8,8 +9,12 @@ export default async function board ({ container }) {
   container.innerHTML = '<div class="pad" id="board"></div>'
   const root = container.querySelector('#board')
 
-  root.append(h('<h1>Home</h1>'))
-  root.append(h('<p class="muted" style="margin-top:0">Everything your add-ons are offering right now.</p>'))
+  // Netflix's billboard: one title from the first catalogue, a different one
+  // each day, filled in once that catalogue answers. Until then — or if it
+  // never does — the page keeps its plain heading.
+  const billboardSlot = h('<div class="billboard-slot"></div>')
+  const heading = h('<div><h1>Home</h1><p class="muted" style="margin-top:0">Everything your add-ons are offering right now.</p></div>')
+  root.append(billboardSlot, heading)
 
   // What is already on this machine comes first, and never waits on the
   // add-ons: a slow or broken catalogue used to take the whole page down with
@@ -57,25 +62,64 @@ export default async function board ({ container }) {
     api.catalog({ addon: catalog.addonId, type: catalog.type, id: catalog.id })
       .then(metas => {
         if (!metas.length) return node.remove()
+        if (!billboardSlot.childElementCount) fillBillboard(billboardSlot, heading, metas, catalog)
         const strip = h('<div class="strip"></div>')
         metas.slice(0, 24).forEach(meta => strip.append(metaCard(meta)))
+        strip.append(seeAllCard(node.moreHref))
         placeholderStrip.replaceWith(strip)
       })
       .catch(() => node.remove())
   }
 }
 
+// Part-way through, one tile per show; then, as Netflix and Stremio do, the
+// episode after one just finished. Finding that needs the show's episode list,
+// so those tiles arrive a moment later and slot in by when they were watched.
 async function renderContinueWatching (root) {
-  let entries = []
+  let all = {}
   try {
-    entries = Object.values(await api.progress())
+    all = await api.progress()
   } catch { return }
-  if (!entries.length) return
+  // One tile per show, decided by the latest thing watched in it.
+  const row = continueRow(all)
+  const entries = row.filter(item => item.kind === 'resume').map(item => item.entry).slice(0, 20)
+  const candidates = row.filter(item => item.kind === 'next').map(item => item.entry).slice(0, 8)
+  if (!entries.length && !candidates.length) return
 
-  entries.sort((a, b) => b.updatedAt - a.updatedAt)
   const node = shelf({ title: 'Continue watching', moreHref: '#/library' })
-  entries.slice(0, 20).forEach(entry => node.strip.append(continueCard(entry)))
+  const place = (card, updatedAt) => {
+    card.dataset.at = String(updatedAt || 0)
+    const later = [...node.strip.children].find(other => Number(other.dataset.at) < (updatedAt || 0))
+    node.strip.insertBefore(card, later || null)
+    node.hidden = false
+  }
+  // Oldest of all, so every tile placed by time lands before it.
+  place(seeAllCard(node.moreHref), -1)
+  // An episode saved without its show's name and poster (the TV app's own
+  // player sends neither) gets them from the show, then takes its place.
+  const shows = new Map()
+  const showOf = id => {
+    if (!shows.has(id)) shows.set(id, api.meta('series', id).catch(() => null))
+    return shows.get(id)
+  }
+  entries.forEach(async entry => {
+    const series = seriesOf(entry)
+    if (series && !entry.meta?.name) entry = withShowDetails(entry, series, await showOf(series))
+    place(continueCard(entry, { onRemove: () => api.hideProgress(entry.id) }), entry.updatedAt)
+  })
+  node.hidden = !entries.length
   root.append(node)
+
+  // Not awaited: the catalogues below must not wait on these.
+  candidates.forEach(async entry => {
+    const type = 'series'
+    const imdbId = seriesOf(entry)
+    const series = await showOf(imdbId)
+    if (!series) return
+    const next = upNext(series?.videos || [], all)
+    if (next?.action !== 'next') return
+    place(upNextCard({ ...series, type, id: imdbId }, next.video, { onRemove: () => api.hideProgress(entry.id) }), entry.updatedAt)
+  })
 }
 
 async function renderActiveDownloads (root) {
@@ -83,7 +127,11 @@ async function renderActiveDownloads (root) {
   try {
     data = await api.torrents()
   } catch { return }
-  const active = data.torrents.filter(torrent => torrent.status !== 'done')
+  // Downloads you asked for that are not finished. A finished one keeps
+  // seeding, and a stream's own cache is not something you asked to keep, so
+  // neither belongs on a row called "Downloading now".
+  const active = data.torrents.filter(torrent =>
+    torrent.mode === 'download' && !['done', 'seeding', 'error'].includes(torrent.status) && torrent.progress < 1)
   if (!active.length) return
 
   const node = shelf({ title: 'Downloading now', moreHref: '#/downloads' })
@@ -98,5 +146,42 @@ async function renderActiveDownloads (root) {
       }
     ))
   })
+  node.strip.append(seeAllCard(node.moreHref))
   root.append(node)
+}
+
+async function fillBillboard (slot, heading, metas, catalog) {
+  // Not something already under way or finished: the billboard is for finding
+  // something, and Continue watching is right below it.
+  const seen = new Set()
+  try {
+    for (const entry of Object.values(await api.progress())) seen.add(entry.meta?.imdbId || entry.id)
+  } catch { /* feature anything */ }
+  const fresh = metas.filter(meta => (meta.poster || meta.background) && !seen.has(meta.id))
+  const candidates = (fresh.length ? fresh : metas.filter(meta => meta.poster || meta.background)).slice(0, 10)
+  if (!candidates.length) return
+  const day = Math.floor(Date.now() / 864e5)
+  let meta = { type: catalog.type, ...candidates[day % candidates.length] }
+  // Catalogue entries are often brief; the title's own record has the rest.
+  if (!meta.description || !meta.background) {
+    try { meta = { ...meta, ...(await api.meta(meta.type, meta.id)) } } catch { /* the brief one will do */ }
+  }
+  if (slot.childElementCount) return
+  const href = detailHref(meta)
+  const art = meta.background || meta.poster
+  const node = h(`
+    <section class="billboard" style="background-image:url('${esc(art)}')">
+      <div class="info">
+        <span class="eyebrow">${esc(catalog.name)}</span>
+        <h1>${esc(meta.name)}</h1>
+        <div class="facts">${[meta.imdbRating ? `<span class="rating">★ ${esc(meta.imdbRating)}</span>` : '', ...[meta.releaseInfo || meta.year, meta.runtime, meta.genres?.slice(0, 3).join(', ')].filter(Boolean).map(fact => `<span>${esc(fact)}</span>`)].filter(Boolean).join('<span>·</span>')}</div>
+        ${meta.description ? `<p class="desc">${esc(meta.description)}</p>` : ''}
+        <div class="cta">
+          <a class="btn primary" href="${esc(href)}?play=1">▶ Play</a>
+          <a class="btn" href="${esc(href)}">ⓘ More info</a>
+        </div>
+      </div>
+    </section>`)
+  slot.append(node)
+  heading.hidden = true
 }

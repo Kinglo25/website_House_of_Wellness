@@ -28,9 +28,18 @@ export default async function search ({ query, container }) {
       }))
     }
     root.append(h(`<p class="muted tiny">${metas.length} result${metas.length === 1 ? '' : 's'}</p>`))
-    const grid = h('<div class="grid"></div>')
-    metas.forEach(meta => grid.append(metaCard(meta, { sub: [meta.releaseInfo || meta.year, meta.addonName].filter(Boolean).join(' · ') })))
-    root.append(grid)
+    // One section per kind, films first, as Stremio lays its results out —
+    // "Dune" the film and "Dune" the series should not be told apart by a subtitle.
+    const LABELS = { movie: 'Films', series: 'Series', channel: 'Channels', tv: 'TV channels' }
+    const kinds = [...new Set(metas.map(meta => meta.type || 'other'))]
+      .sort((a, b) => (Object.keys(LABELS).indexOf(a) + 1 || 99) - (Object.keys(LABELS).indexOf(b) + 1 || 99))
+    for (const kind of kinds) {
+      const group = metas.filter(meta => (meta.type || 'other') === kind)
+      if (kinds.length > 1) root.append(h(`<div class="section-title"><h2>${esc(LABELS[kind] || kind)}</h2><span class="count">${group.length}</span></div>`))
+      const grid = h('<div class="grid"></div>')
+      group.forEach(meta => grid.append(metaCard(meta, { sub: [meta.releaseInfo || meta.year, meta.addonName].filter(Boolean).join(' · ') })))
+      root.append(grid)
+    }
   } catch (err) {
     loading.remove()
     root.append(errorBox(err.message))

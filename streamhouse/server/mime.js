@@ -33,6 +33,24 @@ export function isBrowserPlayable (name = '') {
   return ['.mp4', '.m4v', '.webm', '.ogv'].includes(path.extname(name).toLowerCase())
 }
 
+// The bytes a Range header asks for, as inclusive offsets into a file of `total`
+// bytes, or null when none of them exist. "bytes=-500" is the last 500 bytes, not
+// the first 501: players seek to the end that way to read an index stored there.
+export function byteRange (header, total) {
+  const match = /bytes=(\d*)-(\d*)/.exec(header || '')
+  if (!match || (!match[1] && !match[2])) return { start: 0, end: total - 1 }
+  if (!match[1]) {
+    const suffix = parseInt(match[2], 10)
+    if (!suffix || !total) return null
+    return { start: Math.max(0, total - suffix), end: total - 1 }
+  }
+  const start = parseInt(match[1], 10)
+  if (start >= total) return null
+  let end = match[2] ? parseInt(match[2], 10) : total - 1
+  if (end >= total || end < start) end = total - 1
+  return { start, end }
+}
+
 // Minimal SubRip -> WebVTT conversion so <track> can use add-on subtitles.
 export function srtToVtt (srt = '') {
   const body = String(srt)

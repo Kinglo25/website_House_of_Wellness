@@ -5,8 +5,10 @@ import { config } from '../config.js'
 import { addons, clearAddonCache } from '../addons.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { rankStreams, PROFILES } from '../rank.js'
-import { library, progress } from '../history.js'
-import { mimeFor, isBrowserPlayable, srtToVtt } from '../mime.js'
+import { library, progress, viewers, markers } from '../history.js'
+import { MAIN, scopeKey, splitKey, progressOf, libraryOf, viewerOf } from '../viewers.js'
+import { recordPosition, setWatched, hide } from '../watching.js'
+import { mimeFor, isBrowserPlayable, srtToVtt, byteRange } from '../mime.js'
 import { localAddresses, lanUrl, isLanReachable } from '../network.js'
 import * as cast from '../cast.js'
 import * as vlc from '../vlc.js'
@@ -117,24 +119,57 @@ router.get('/search', wrap(async (req, res) => {
   res.json(await addons.search(query, types))
 }))
 
+/* ---------------------------------------------------------------- profiles */
+
+// Who is watching. Every request below names its profile in X-Viewer; one that
+// names none, or one since removed, is the main profile's — which is also all
+// an older device knows about.
+const who = req => viewerOf(req, viewers.list())
+
+router.get('/viewers', (req, res) => res.json(viewers.list()))
+
+router.post('/viewers', (req, res) => {
+  const name = String(req.body?.name || '').trim()
+  if (!name) return res.status(400).json({ error: 'A profile needs a name' })
+  res.status(201).json(viewers.add({ name, colour: req.body?.colour }))
+})
+
+router.post('/viewers/:id', (req, res) => {
+  res.json(viewers.update(req.params.id, { name: req.body?.name, colour: req.body?.colour }))
+})
+
+// Removing a profile removes what it watched and saved; nobody else's.
+router.delete('/viewers/:id', (req, res) => {
+  const { id } = req.params
+  viewers.remove(id)
+  const all = progress.get()
+  for (const key of Object.keys(all)) if (splitKey(key).viewer === id) delete all[key]
+  progress.set(all)
+  library.set(library.get().filter(item => item.viewer !== id))
+  res.json({ removed: id })
+})
+
 /* ----------------------------------------------------------------- library */
 
 router.get('/library', wrap(async (req, res) => {
   await account.fresh()
-  res.json(library.get())
+  res.json(libraryOf(library.get(), who(req)))
 }))
 
 router.post('/library', (req, res) => {
-  const item = req.body || {}
+  const viewer = who(req)
+  const { viewer: _, ...item } = req.body || {}
   if (!item.id || !item.type) return res.status(400).json({ error: 'id and type are required' })
-  const items = library.get().filter(entry => entry.id !== item.id)
-  items.unshift({ ...item, addedAt: Date.now() })
+  const mine = entry => entry.id === item.id && (entry.viewer || MAIN) === viewer
+  const items = library.get().filter(entry => !mine(entry))
+  items.unshift({ ...item, ...(viewer === MAIN ? {} : { viewer }), addedAt: Date.now() })
   library.set(items)
   res.status(201).json(item)
 })
 
 router.delete('/library/:id', (req, res) => {
-  library.set(library.get().filter(entry => entry.id !== req.params.id))
+  const viewer = who(req)
+  library.set(library.get().filter(entry => !(entry.id === req.params.id && (entry.viewer || MAIN) === viewer)))
   res.json({ removed: req.params.id })
 })
 
@@ -144,31 +179,96 @@ router.delete('/library/:id', (req, res) => {
 // from the account server first, for as long as that is quick.
 router.get('/progress', wrap(async (req, res) => {
   await account.fresh()
-  res.json(progress.get())
+  res.json(progressOf(progress.get(), who(req)))
 }))
 
+// The key an entry is stored under. A key that already names a profile is
+// taken as it is: the TV app's native player reports the key it was handed,
+// which the page scoped before handing it over.
+function storedKey (viewer, id) {
+  const already = splitKey(id)
+  if (already.viewer !== MAIN && viewers.has(already.viewer)) return String(id)
+  return scopeKey(viewer, id)
+}
+const asSeen = (entry, key) => ({ ...entry, id: splitKey(key).key })
+
 // Shared by the browser player, which posts here, and VLC, whose position the
-// server reads back itself.
-function recordProgress ({ id, time, duration, meta }) {
+// server reads back itself. The rules are in watching.js.
+function recordProgress ({ viewer = MAIN, id, time, duration, meta }) {
+  const key = storedKey(viewer, id)
   const all = progress.get()
-  const finished = duration > 0 && time / duration > 0.93
-  if (finished) delete all[id]
-  else all[id] = { id, time: Number(time) || 0, duration: Number(duration) || 0, meta: meta || all[id]?.meta, updatedAt: Date.now() }
+  const entry = recordPosition(all, { id: key, time, duration, meta })
   progress.set(all)
-  return all[id] || { id, cleared: true }
+  return entry ? asSeen(entry, key) : { id: splitKey(key).key, cleared: true }
 }
 
 router.post('/progress', (req, res) => {
   const { id, time, duration, meta } = req.body || {}
   if (!id) return res.status(400).json({ error: 'id is required' })
-  res.json(recordProgress({ id, time, duration, meta }))
+  res.json(recordProgress({ viewer: who(req), id, time, duration, meta }))
+})
+
+// The tick on an episode, by hand: "Mark as watched" and its undo.
+// `items` marks a whole season at once, in one write: [{ id, meta }, ...].
+router.post('/watched', (req, res) => {
+  const { id, watched, meta, items } = req.body || {}
+  const list = Array.isArray(items) ? items : [{ id, meta }]
+  if (!list.length || list.some(item => !item?.id)) return res.status(400).json({ error: 'id is required' })
+  if (list.length > 500) return res.status(413).json({ error: 'At most 500 at once' })
+  const viewer = who(req)
+  const all = progress.get()
+  const results = list.map(item => {
+    const key = storedKey(viewer, String(item.id))
+    const entry = setWatched(all, { id: key, watched: Boolean(watched), meta: item.meta })
+    return entry ? asSeen(entry, key) : { id: String(item.id), cleared: true }
+  })
+  progress.set(all)
+  res.json(Array.isArray(items) ? results : results[0])
+})
+
+// "Remove from row" on continue watching and up next.
+router.post('/progress/:id/hide', (req, res) => {
+  const key = storedKey(who(req), req.params.id)
+  const all = progress.get()
+  const entry = hide(all, key)
+  progress.set(all)
+  res.json(entry ? asSeen(entry, key) : { id: req.params.id, cleared: true })
 })
 
 router.delete('/progress/:id', (req, res) => {
   const all = progress.get()
-  delete all[req.params.id]
+  delete all[storedKey(who(req), req.params.id)]
   progress.set(all)
   res.json({ removed: req.params.id })
+})
+
+/* ------------------------------------------------------------------ intros */
+
+// Skip Intro, learned rather than detected: the player reports where someone
+// skipped the opening of an episode by hand, and every episode of that show
+// offers the same jump. Plex and Jellyfin find the span by analysing audio;
+// StreamHouse only ever sees what people do.
+router.get('/intro/:series', (req, res) => res.json(markers.get()[req.params.series] || null))
+
+router.post('/intro/:series', (req, res) => {
+  const start = Number(req.body?.start)
+  const end = Number(req.body?.end)
+  // An intro starts in the first few minutes and lasts from a few seconds to
+  // a few minutes; anything else is someone skipping a scene.
+  if (!(start >= 0 && start < 480 && end - start >= 10 && end - start <= 300)) {
+    return res.status(400).json({ error: 'That does not look like an intro' })
+  }
+  const all = markers.get()
+  all[req.params.series] = { start: Math.round(start), end: Math.round(end), learnedAt: Date.now() }
+  markers.set(all)
+  res.json(all[req.params.series])
+})
+
+router.delete('/intro/:series', (req, res) => {
+  const all = markers.get()
+  delete all[req.params.series]
+  markers.set(all)
+  res.json({ removed: req.params.series })
 })
 
 /* ----------------------------------------------------------------- account */
@@ -263,15 +363,12 @@ async function serveFile (req, res, next) {
     return stream.pipe(res)
   }
 
-  const match = /bytes=(\d*)-(\d*)/.exec(range)
-  let start = match?.[1] ? parseInt(match[1], 10) : 0
-  let end = match?.[2] ? parseInt(match[2], 10) : total - 1
-  if (Number.isNaN(start) || start >= total) {
+  const wanted = byteRange(range, total)
+  if (!wanted) {
     res.writeHead(416, { 'Content-Range': `bytes */${total}` })
     return res.end()
   }
-  if (Number.isNaN(end) || end >= total) end = total - 1
-  if (end < start) end = total - 1
+  const { start, end } = wanted
 
   res.writeHead(206, {
     ...headers,
@@ -326,6 +423,7 @@ router.get('/vlc', (req, res) => {
 // refused: VLC would start on a screen nobody is watching.
 router.post('/vlc/play', wrap(async (req, res) => {
   const { url, title, start, progressKey, meta, explicit } = req.body || {}
+  const viewer = who(req)
   if (!explicit && config.get().desktopPlayer === 'browser') {
     return res.status(409).json({ error: 'Settings say to play in the browser', code: 'disabled' })
   }
@@ -344,7 +442,7 @@ router.post('/vlc/play', wrap(async (req, res) => {
     url: target,
     title: typeof title === 'string' ? title : '',
     start: Number(start) || 0,
-    onProgress: progressKey ? ({ time, duration }) => recordProgress({ id: String(progressKey), time, duration, meta }) : null
+    onProgress: progressKey ? ({ time, duration }) => recordProgress({ viewer, id: String(progressKey), time, duration, meta }) : null
   })
   res.json({ ok: true })
 }))

@@ -49,6 +49,17 @@ and in `streamhouse/`:
 STREAMHOUSE_ACCOUNT_SERVER=http://127.0.0.1:8787 npm start
 ```
 
+### Tests
+
+```bash
+npm run dev -- --var ALLOW_SIGNUPS:true     # in one terminal: signups are off in wrangler.toml
+npm test                                    # in another
+```
+
+They sign up, sync between two devices, page through a long history, sign out and
+hit the wrong-password lockout, all against the running server. Each run uses a fresh
+email, so they can be repeated against the same local database.
+
 ## How sync works
 
 Every synced thing is one row: a *Continue watching* entry, a library title, the

@@ -1,9 +1,12 @@
 /* Thin wrapper around the local StreamHouse HTTP API. */
 
+import { currentViewer } from './viewers.js'
+
 async function request (url, options = {}) {
   const res = await fetch(url, {
-    headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
     ...options,
+    // Which profile is watching: progress, ticks and the library are its own.
+    headers: { 'X-Viewer': currentViewer(), ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
     body: options.body ? JSON.stringify(options.body) : undefined
   })
   const text = await res.text()
@@ -38,6 +41,15 @@ export const api = {
   saveConfig: patch => request('/api/config', { method: 'POST', body: patch }),
   profiles: () => request('/api/profiles'),
 
+  intro: series => request(`/api/intro/${encodeURIComponent(series)}`),
+  learnIntro: (series, body) => request(`/api/intro/${encodeURIComponent(series)}`, { method: 'POST', body }),
+  forgetIntro: series => request(`/api/intro/${encodeURIComponent(series)}`, { method: 'DELETE' }),
+
+  viewers: () => request('/api/viewers'),
+  addViewer: body => request('/api/viewers', { method: 'POST', body }),
+  updateViewer: (id, body) => request(`/api/viewers/${encodeURIComponent(id)}`, { method: 'POST', body }),
+  removeViewer: id => request(`/api/viewers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   addons: (refresh = false) => request(`/api/addons${refresh ? '?refresh=1' : ''}`),
   installAddon: url => request('/api/addons', { method: 'POST', body: { url } }),
   removeAddon: id => request(`/api/addons/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -64,6 +76,8 @@ export const api = {
   progress: () => request('/api/progress'),
   saveProgress: body => request('/api/progress', { method: 'POST', body }),
   clearProgress: id => request(`/api/progress/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  hideProgress: id => request(`/api/progress/${encodeURIComponent(id)}/hide`, { method: 'POST' }),
+  setWatched: body => request('/api/watched', { method: 'POST', body }),
 
   torrents: () => request('/api/torrents'),
   addTorrent: body => request('/api/torrents', { method: 'POST', body }),

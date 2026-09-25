@@ -2,9 +2,10 @@ import { api } from '../api.js'
 import { h, esc, toast, bytes, confirmDialog } from '../util.js'
 import { setTvMode } from '../tv.js'
 import { castPicker } from '../cast.js'
+import { avatar, currentViewer, setViewer, MAIN } from '../viewers.js'
 
 // Everything the engine and the UI read at runtime, editable in one place.
-export default async function settings ({ container }) {
+export default async function settings ({ container, query = {} }) {
   container.innerHTML = '<div class="pad" id="settings"></div>'
   const root = container.querySelector('#settings')
   root.append(h('<h1>Settings</h1>'))
@@ -19,6 +20,12 @@ export default async function settings ({ container }) {
   ])
   const grid = h('<div class="settings-grid"></div>')
   root.append(grid)
+  // Switches are buttons, so a remote and a keyboard can reach them; this keeps
+  // what they announce in step with how they look, whichever code flips them.
+  const announce = toggle => toggle.setAttribute('aria-checked', String(toggle.classList.contains('on')))
+  new MutationObserver(changes => changes.forEach(change => change.target.matches?.('.switch') && announce(change.target)))
+    .observe(grid, { attributes: true, attributeFilter: ['class'], subtree: true })
+  setTimeout(() => grid.querySelectorAll('.switch').forEach(announce))
 
   const save = async patch => {
     try {
@@ -33,7 +40,7 @@ export default async function settings ({ container }) {
     const node = h(`
       <div class="setting">
         <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
-        <div class="control"><input class="field" value="${esc(value)}" placeholder="${esc(placeholder)}"></div>
+        <div class="control"><input class="field" value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(title)}"></div>
       </div>`)
     const input = node.querySelector('input')
     input.addEventListener('change', () => save({ [key]: input.value }))
@@ -44,7 +51,7 @@ export default async function settings ({ container }) {
     const node = h(`
       <div class="setting">
         <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
-        <div class="control"><input class="field" type="number" min="${min}" step="${step}" value="${esc(display(value))}"></div>
+        <div class="control"><input class="field" type="number" min="${min}" step="${step}" value="${esc(display(value))}" aria-label="${esc(title)}"></div>
       </div>`)
     const input = node.querySelector('input')
     input.addEventListener('change', () => save({ [key]: transform(Number(input.value)) }))
@@ -56,7 +63,7 @@ export default async function settings ({ container }) {
       <div class="setting">
         <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
         <div class="control">
-          <select class="field">
+          <select class="field" aria-label="${esc(title)}">
             ${options.map(option => `<option value="${esc(option.value)}" ${String(option.value) === String(value) ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}
           </select>
         </div>
@@ -70,7 +77,7 @@ export default async function settings ({ container }) {
     const node = h(`
       <div class="setting">
         <div class="label"><b>${esc(title)}</b><span class="tiny muted">${hint}</span></div>
-        <div class="switch ${value ? 'on' : ''}"><i></i></div>
+        <button type="button" role="switch" class="switch ${value ? 'on' : ''}" aria-label="${esc(title)}"><i></i></button>
       </div>`)
     const toggle = node.querySelector('.switch')
     toggle.addEventListener('click', () => {
@@ -83,7 +90,11 @@ export default async function settings ({ container }) {
 
   /* ------------------------------------------------------------- account */
 
-  grid.append(h('<h2 style="margin-top:8px">Account</h2>'))
+  grid.append(h('<h2 style="margin-top:8px" id="profiles">Profiles</h2>'))
+  grid.append(profilesPanel())
+  if (query.section === 'profiles') setTimeout(() => root.querySelector('#profiles')?.scrollIntoView({ block: 'start' }), 50)
+
+  grid.append(h('<h2 style="margin-top:22px">Account</h2>'))
   const accountPanel = h('<div class="setting" style="align-items:flex-start"></div>')
   grid.append(accountPanel)
 
@@ -199,7 +210,7 @@ export default async function settings ({ container }) {
         network. Off means this computer only — which is why a TV cannot find it.</span>
         <div id="tv-address" style="margin-top:12px"></div>
       </div>
-      <div class="switch ${network?.reachable ? 'on' : ''}" id="tv-expose"><i></i></div>
+      <button type="button" role="switch" class="switch ${network?.reachable ? 'on' : ''}" id="tv-expose" aria-label="Allow other devices"><i></i></button>
     </div>`)
   grid.append(tvPanel)
 
@@ -248,7 +259,7 @@ export default async function settings ({ container }) {
         <span class="tiny muted">Bigger text and remote-control navigation — arrow keys move the
         highlight, OK selects, Back goes back. Detected automatically on smart TVs.</span>
       </div>
-      <div class="switch ${document.documentElement.classList.contains('tv') ? 'on' : ''}"><i></i></div>
+      <button type="button" role="switch" class="switch ${document.documentElement.classList.contains('tv') ? 'on' : ''}" aria-label="TV mode"><i></i></button>
     </div>`)
   tvModePanel.querySelector('.switch').addEventListener('click', event => {
     const toggle = event.currentTarget
@@ -402,4 +413,84 @@ export default async function settings ({ container }) {
       <div class="control tiny muted mono">data: ~/.streamhouse<br>media: ${esc(config.downloadDir)}</div>
     </div>`)
   grid.append(about)
+}
+
+/* --------------------------------------------------------------- profiles */
+
+const SWATCHES = ['#7b5bf5', '#e35d6a', '#3ac47d', '#f5a623', '#3a9ad9', '#d95fb5', '#8a8fa8']
+
+// Netflix's "Manage profiles": each person in the house gets their own
+// Continue watching, ticks and library. Add-ons, downloads and these settings
+// stay shared.
+function profilesPanel () {
+  const panel = h(`
+    <div class="setting profiles-panel">
+      <div class="label"><b>Who watches here</b><span class="tiny muted">Each profile has its own Continue watching, watched episodes and library. With more than one, StreamHouse asks who is watching when it opens.</span></div>
+      <div class="profiles"></div>
+    </div>`)
+  const list = panel.querySelector('.profiles')
+
+  const changed = () => window.dispatchEvent(new Event('viewerschanged'))
+
+  async function draw () {
+    let viewers = []
+    try { viewers = await api.viewers() } catch (err) { list.textContent = err.message; return }
+    list.innerHTML = ''
+    for (const viewer of viewers) {
+      const row = h(`
+        <div class="profile-row">
+          ${avatar(viewer, 'lg')}
+          <input class="field" value="${esc(viewer.name)}" maxlength="24" aria-label="Name">
+          <div class="swatches">${SWATCHES.map(colour => `<button class="swatch${colour === viewer.colour ? ' on' : ''}" style="background:${colour}" data-colour="${colour}" title="Colour"></button>`).join('')}</div>
+          ${viewer.id === currentViewer() ? '<span class="tiny muted">watching now</span>' : `<button class="btn small" data-act="use">Switch to</button>`}
+          ${viewer.id === MAIN ? '' : '<button class="btn small ghost danger" data-act="remove">Remove</button>'}
+        </div>`)
+      const name = row.querySelector('input')
+      name.addEventListener('change', async () => {
+        await api.updateViewer(viewer.id, { name: name.value }).catch(err => toast(err.message, 'err'))
+        changed(); draw()
+      })
+      row.querySelectorAll('.swatch').forEach(swatch => swatch.addEventListener('click', async () => {
+        await api.updateViewer(viewer.id, { colour: swatch.dataset.colour }).catch(err => toast(err.message, 'err'))
+        changed(); draw()
+      }))
+      row.querySelector('[data-act="use"]')?.addEventListener('click', () => setViewer(viewer.id))
+      row.querySelector('[data-act="remove"]')?.addEventListener('click', async () => {
+        const sure = await confirmDialog({
+          title: `Remove ${viewer.name}?`,
+          body: `<p class="muted">${esc(viewer.name)}’s Continue watching, watched episodes and library go with it, on every device signed in to this account. Nobody else’s are touched.</p>`,
+          confirmLabel: 'Remove',
+          danger: true
+        })
+        if (!sure) return
+        await api.removeViewer(viewer.id).catch(err => toast(err.message, 'err'))
+        if (viewer.id === currentViewer()) setViewer(MAIN)
+        changed(); draw()
+      })
+      list.append(row)
+    }
+    if (viewers.length < 6) {
+      const add = h(`
+        <form class="profile-row add">
+          <span class="avatar lg" style="background:var(--surface-strong)">＋</span>
+          <input class="field" placeholder="Add a profile — a name" maxlength="24" aria-label="New profile name">
+          <button class="btn small primary">Add</button>
+        </form>`)
+      add.addEventListener('submit', async event => {
+        event.preventDefault()
+        const input = add.querySelector('input')
+        if (!input.value.trim()) return
+        try {
+          await api.addViewer({ name: input.value.trim() })
+          toast(`${input.value.trim()} added`, 'ok')
+        } catch (err) {
+          toast(err.message, 'err')
+        }
+        changed(); draw()
+      })
+      list.append(add)
+    }
+  }
+  draw()
+  return panel
 }
