@@ -2,6 +2,18 @@ import { api } from '../api.js'
 import { h, esc, clock, toast, bytes } from '../util.js'
 import { castPicker } from '../cast.js'
 
+// What the keyboard does in the player, for the ? overlay.
+const SHORTCUTS = [
+  [['Space', 'K'], 'Play / pause'],
+  [['←', '→'], 'Back / forward 5 seconds'],
+  [['↑', '↓'], 'Volume'],
+  [['M'], 'Mute'],
+  [['F'], 'Full screen'],
+  [['<', '>'], 'Slower / faster'],
+  [['G', 'H'], 'Subtitles earlier / later'],
+  [['Esc'], 'Back to where you were']
+]
+
 // Netflix's presets, plus the 2× people ask it for.
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
@@ -609,6 +621,16 @@ export default async function player ({ params, query, container }) {
       }
       case 'f': document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen?.(); break
       case 'm': video.muted = !video.muted; break
+      case '?': {
+        const open = root.querySelector('.shortcuts')
+        if (open) { open.remove(); break }
+        root.append(h(`<div class="shortcuts" role="dialog" aria-label="Keyboard shortcuts">
+          <h3>Keyboard shortcuts</h3>
+          <dl>${SHORTCUTS.map(([keys, what]) => `<dt>${keys.map(key => `<kbd>${esc(key)}</kbd>`).join(' ')}</dt><dd>${esc(what)}</dd>`).join('')}</dl>
+          <p class="tiny muted">Press <kbd>?</kbd> again to close.</p>
+        </div>`))
+        break
+      }
       case 'g': case 'h':
         if (!video.querySelector('track')) break
         setDelay(subStyle.delay + (event.key === 'g' ? -0.25 : 0.25))
@@ -622,7 +644,10 @@ export default async function player ({ params, query, container }) {
         toast(rate === 1 ? 'Normal speed' : `${rate}× speed`)
         break
       }
-      case 'Escape': if (!document.fullscreenElement) history.back(); break
+      case 'Escape':
+        if (root.querySelector('.shortcuts')) root.querySelector('.shortcuts').remove()
+        else if (!document.fullscreenElement) history.back()
+        break
     }
   }
   window.addEventListener('keydown', onKey)

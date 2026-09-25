@@ -325,7 +325,7 @@ is fine and plays anywhere else.
 The player streams over HTTP byte ranges from the local engine, so seeking works while
 the file is still downloading. Keyboard: `space`/`k` play-pause, `←`/`→` 5s, `↑`/`↓`
 volume, `<`/`>` speed (0.5× to 2×), `g`/`h` subtitles a quarter-second earlier or later,
-`f` fullscreen, `m` mute, `esc` back. The subtitle language you pick — or *off* — is
+`f` fullscreen, `m` mute, `esc` back, and `?` lists them all. The subtitle language you pick — or *off* — is
 remembered and chosen by itself next time, and **Aa** beside it sets their size
 (remembered) and timing (for this file), for the torrent whose subtitles run late.
 

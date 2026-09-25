@@ -734,3 +734,16 @@ html.tv .billboard .eyebrow { font-size: 15px; }
 .stream.local .tag { background: rgba(58,196,125,0.16); color: var(--green); }
 .local-list { margin-bottom: 10px; }
 .on-disk { color: var(--green); font-weight: 600; }
+
+/* The player's ? overlay */
+.player-wrap .shortcuts {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  min-width: 320px; padding: 22px 26px; border-radius: var(--radius);
+  background: rgba(14,15,26,0.95); border: 1px solid var(--border); z-index: 5;
+}
+.player-wrap .shortcuts h3 { margin: 0 0 12px; }
+.player-wrap .shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin: 0 0 12px; }
+.player-wrap .shortcuts dt { white-space: nowrap; }
+.player-wrap .shortcuts dd { margin: 0; color: #d3d5ea; }
+kbd { display: inline-block; min-width: 22px; padding: 2px 6px; border-radius: 5px; text-align: center;
+  background: var(--surface-strong); border: 1px solid var(--border); font: 600 12px/1.4 inherit; }
