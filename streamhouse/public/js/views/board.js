@@ -1,7 +1,7 @@
 import { api } from '../api.js'
 import { h, bytes, esc } from '../util.js'
-import { metaCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox, detailHref, seeAllCard } from '../components.js'
-import { inProgress, upNextCandidates, upNext } from '../watching.js'
+import { metaCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox, detailHref, seeAllCard, withShowDetails } from '../components.js'
+import { continueRow, seriesOf, upNext } from '../watching.js'
 
 // Home. Continue watching, whatever is downloading right now, then the first
 // page of every catalogue the installed add-ons expose.
@@ -80,8 +80,10 @@ async function renderContinueWatching (root) {
   try {
     all = await api.progress()
   } catch { return }
-  const entries = inProgress(all).slice(0, 20)
-  const candidates = upNextCandidates(all).slice(0, 8)
+  // One tile per show, decided by the latest thing watched in it.
+  const row = continueRow(all)
+  const entries = row.filter(item => item.kind === 'resume').map(item => item.entry).slice(0, 20)
+  const candidates = row.filter(item => item.kind === 'next').map(item => item.entry).slice(0, 8)
   if (!entries.length && !candidates.length) return
 
   const node = shelf({ title: 'Continue watching', moreHref: '#/library' })
@@ -93,17 +95,27 @@ async function renderContinueWatching (root) {
   }
   // Oldest of all, so every tile placed by time lands before it.
   place(seeAllCard(node.moreHref), -1)
-  entries.forEach(entry => place(continueCard(entry, { onRemove: () => api.hideProgress(entry.id) }), entry.updatedAt))
+  // An episode saved without its show's name and poster (the TV app's own
+  // player sends neither) gets them from the show, then takes its place.
+  const shows = new Map()
+  const showOf = id => {
+    if (!shows.has(id)) shows.set(id, api.meta('series', id).catch(() => null))
+    return shows.get(id)
+  }
+  entries.forEach(async entry => {
+    const series = seriesOf(entry)
+    if (series && !entry.meta?.name) entry = withShowDetails(entry, series, await showOf(series))
+    place(continueCard(entry, { onRemove: () => api.hideProgress(entry.id) }), entry.updatedAt)
+  })
   node.hidden = !entries.length
   root.append(node)
 
   // Not awaited: the catalogues below must not wait on these.
   candidates.forEach(async entry => {
-    const { type, imdbId } = entry.meta
-    let series
-    try {
-      series = await api.meta(type, imdbId)
-    } catch { return }
+    const type = 'series'
+    const imdbId = seriesOf(entry)
+    const series = await showOf(imdbId)
+    if (!series) return
     const next = upNext(series?.videos || [], all)
     if (next?.action !== 'next') return
     place(upNextCard({ ...series, type, id: imdbId }, next.video, { onRemove: () => api.hideProgress(entry.id) }), entry.updatedAt)

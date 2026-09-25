@@ -13,7 +13,7 @@ import { explainInstallError } from '../server/addon-errors.js'
 import { introSpan, inIntro, skipTracker } from '../public/js/intro.js'
 import { MAIN, scopeKey, splitKey, progressOf, libraryOf, normalise, viewerOf } from '../server/viewers.js'
 import { recordPosition, setWatched, hide } from '../server/watching.js'
-import { inProgress, upNextCandidates, upNext, episodeLabel, sortLibrary, followedShows, episodeCalendar } from '../public/js/watching.js'
+import { inProgress, upNextCandidates, upNext, episodeLabel, sortLibrary, followedShows, episodeCalendar, continueRow, seriesOf } from '../public/js/watching.js'
 
 let passed = 0
 let failed = 0
@@ -484,6 +484,41 @@ console.log('\nInstalling an add-on: what went wrong, in words')
   ok('no answer in time', says(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }), /did not answer in time/))
   ok('an unreachable host', says(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } }), /Could not reach/))
   ok('none of them repeat the raw message', !/Unexpected token|parse URL/.test(explainInstallError(new SyntaxError('Unexpected token <'))))
+}
+
+console.log('\nContinue watching: one tile per show')
+{
+  const show = { type: 'series', imdbId: 'tt1' }
+  const row = all => continueRow(all).map(item => `${item.kind}:${item.entry.id}`).join(',')
+
+  // Stopped part-way through E2, then watched E3 to the end: the show once,
+  // offering E4 — not E2 again beside it.
+  eq('an older half-watched episode does not come back beside Up next', row({
+    'tt1:1:2': { id: 'tt1:1:2', time: 600, duration: 2600, updatedAt: 5, meta: show },
+    'tt1:1:3': { id: 'tt1:1:3', time: 0, watched: true, updatedAt: 9, meta: show }
+  }), 'next:tt1:1:3')
+  eq('and the other way round: the half-watched one, newest, is the tile', row({
+    'tt1:1:3': { id: 'tt1:1:3', time: 0, watched: true, updatedAt: 5, meta: show },
+    'tt1:1:4': { id: 'tt1:1:4', time: 300, duration: 2600, updatedAt: 9, meta: show }
+  }), 'resume:tt1:1:4')
+
+  // Saved with no details, as the TV app's own player saves them.
+  eq('an episode id names its show', seriesOf({ id: 'tt1:2:7' }), 'tt1')
+  eq('a film is not taken for an episode', seriesOf({ id: 'tt9', meta: { type: 'movie', imdbId: 'tt9' } }), null)
+  eq('nor is an id of another shape', seriesOf({ id: 'some-film' }), null)
+  eq('episodes saved without details are still one show', row({
+    'tt1:1:1': { id: 'tt1:1:1', time: 300, duration: 2600, updatedAt: 3 },
+    'tt1:1:2': { id: 'tt1:1:2', time: 400, duration: 2600, updatedAt: 4 }
+  }), 'resume:tt1:1:2')
+
+  eq('films and shows side by side, newest first', row({
+    film: { id: 'film', time: 50, updatedAt: 7, meta: { type: 'movie', imdbId: 'film' } },
+    'tt1:1:1': { id: 'tt1:1:1', time: 20, updatedAt: 8, meta: show },
+    'tt2:1:1': { id: 'tt2:1:1', time: 0, watched: true, updatedAt: 6, meta: { type: 'series', imdbId: 'tt2' } }
+  }), 'resume:tt1:1:1,resume:film,next:tt2:1:1')
+  eq('a finished show taken off the row stays off', row({
+    'tt1:1:1': { id: 'tt1:1:1', time: 0, watched: true, hidden: true, updatedAt: 8, meta: show }
+  }), '')
 }
 
 /* -------------------------------------------------------------------- done */

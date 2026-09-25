@@ -184,3 +184,20 @@ function addRowArrows (node) {
   next.hidden = true
   node.append(prev, next)
 }
+
+// An episode's progress entry, filled in from its show when it was saved
+// without a name or poster — the TV app's own player sends neither — so its
+// tile shows the show rather than a bare id. `show` is the show's metadata,
+// or null when it could not be fetched.
+export function withShowDetails (entry, series, show) {
+  const [, season, episode] = /:(\d+):(\d+)$/.exec(entry.id) || []
+  return {
+    ...entry,
+    meta: {
+      ...entry.meta,
+      type: 'series', id: series, imdbId: series, videoId: entry.id,
+      name: show?.name || series, title: show?.name || series, poster: show?.poster,
+      season: season ? Number(season) : undefined, episode: episode ? Number(episode) : undefined
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import { api } from '../api.js'
 import { h, esc, confirmDialog, toast } from '../util.js'
-import { metaCard, continueCard, emptyState, detailHref } from '../components.js'
-import { inProgress, sortLibrary, LIBRARY_SORTS, followedShows, episodeCalendar, episodeLabel } from '../watching.js'
+import { metaCard, continueCard, emptyState, detailHref, withShowDetails } from '../components.js'
+import { inProgress, seriesOf, sortLibrary, LIBRARY_SORTS, followedShows, episodeCalendar, episodeLabel } from '../watching.js'
 
 // Saved titles plus anything with a saved playback position.
 export default async function library ({ container }) {
@@ -19,10 +19,16 @@ export default async function library ({ container }) {
   if (watching.length) {
     root.append(h('<div class="section-title"><h2>Continue watching</h2></div>'))
     const grid = h('<div class="grid"></div>')
-    watching.forEach(entry => {
+    watching.forEach(async entry => {
+      const series = seriesOf(entry)
+      // Holds its place while a nameless episode's show is looked up.
+      const slot = document.createElement('div')
+      slot.style.display = 'contents'
+      grid.append(slot)
+      if (series && !entry.meta?.name) entry = withShowDetails(entry, series, await api.meta('series', series).catch(() => null))
       // Same tile as the home shelf: clicking it picks the file back up where
       // it stopped instead of opening the title page again.
-      grid.append(continueCard(entry, {
+      slot.replaceWith(continueCard(entry, {
         onRemove: async () => {
           await api.hideProgress(entry.id)
           toast('Removed from continue watching', 'ok')

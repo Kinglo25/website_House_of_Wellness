@@ -5,41 +5,52 @@
  * to the end, `hidden` a finished one taken off the "Up next" row. */
 
 // The show an entry belongs to, for an episode; null for anything else.
+// From what was saved with it, or failing that from the episode's own id:
+// Stremio names an episode <show>:<season>:<episode>. An entry saved with no
+// details — the TV app's native player reports an id and a position, nothing
+// more — still belongs to its show, instead of becoming a show of its own.
+const EPISODE_ID = /^(.+):(\d+):(\d+)$/
 export function seriesOf (entry) {
   const meta = entry?.meta || {}
-  return meta.type === 'series' && meta.imdbId ? meta.imdbId : null
+  if (meta.type === 'series' && meta.imdbId) return meta.imdbId
+  if (meta.type && meta.type !== 'series') return null
+  return EPISODE_ID.exec(String(meta.videoId || entry?.id || ''))?.[1] || null
+}
+
+/* The Continue watching row, as Netflix and Stremio decide it: one tile per
+ * show, decided by the latest thing watched in it, never by an older one.
+ *
+ *   { kind: 'resume', entry }   part-way through — carry on with it
+ *   { kind: 'next', entry }     finished — offer the episode after it
+ *
+ * A film part-way through is a resume tile of its own. Newest first. */
+export function continueRow (all) {
+  const latest = new Map()
+  for (const entry of Object.values(all || {})) {
+    if (!entry) continue
+    const key = seriesOf(entry) || `film:${entry.id}`
+    const current = latest.get(key)
+    if (!current || (entry.updatedAt || 0) >= (current.updatedAt || 0)) latest.set(key, entry)
+  }
+  const row = []
+  for (const [key, entry] of latest) {
+    if (entry.time > 0) row.push({ kind: 'resume', entry })
+    else if (!key.startsWith('film:') && entry.watched && !entry.hidden) row.push({ kind: 'next', entry })
+  }
+  return row.sort((a, b) => (b.entry.updatedAt || 0) - (a.entry.updatedAt || 0))
 }
 
 // Continue watching: everything part-way through, newest first — one tile per
 // show, the episode touched last, as Netflix and Stremio both do.
 export function inProgress (all) {
-  const seen = new Set()
-  return Object.values(all || {})
-    .filter(entry => entry && entry.time > 0)
-    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-    .filter(entry => {
-      const series = seriesOf(entry)
-      if (!series) return true
-      if (seen.has(series)) return false
-      seen.add(series)
-      return true
-    })
+  return continueRow(all).filter(item => item.kind === 'resume').map(item => item.entry)
 }
 
 // Shows whose last thing watched was an episode seen to the end — the ones
 // that might have a next episode to offer. Newest first; a show with anything
 // part-way through is already on continue watching instead.
 export function upNextCandidates (all) {
-  const latest = new Map()
-  for (const entry of Object.values(all || {})) {
-    const series = seriesOf(entry)
-    if (!series) continue
-    const current = latest.get(series)
-    if (!current || (entry.updatedAt || 0) > (current.updatedAt || 0)) latest.set(series, entry)
-  }
-  return [...latest.values()]
-    .filter(entry => entry.watched && !(entry.time > 0) && !entry.hidden)
-    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+  return continueRow(all).filter(item => item.kind === 'next').map(item => item.entry)
 }
 
 // Episodes in watching order, specials left out unless that is all there is.
@@ -97,7 +108,7 @@ export function episodeLabel (video) {
 export function lastWatched (item, all) {
   let latest = 0
   for (const entry of Object.values(all || {})) {
-    if (entry?.id === item.id || entry?.meta?.imdbId === item.id) latest = Math.max(latest, entry.updatedAt || 0)
+    if (entry?.id === item.id || entry?.meta?.imdbId === item.id || seriesOf(entry) === item.id) latest = Math.max(latest, entry.updatedAt || 0)
   }
   return latest
 }
