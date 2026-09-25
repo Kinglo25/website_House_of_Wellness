@@ -843,3 +843,13 @@ html.tv .card .ribbon { padding: 4px 9px; }
 .skip-intro:hover, .skip-intro:focus-visible { background: #fff; color: #000; }
 html.tv .skip-intro { bottom: 170px; right: 48px; font-size: 22px; padding: 16px 30px; }
 @media (max-width: 700px) { .skip-intro { right: 14px; bottom: 150px; } }
+
+/* Sleep timer */
+.player-controls [data-act="sleep"].on { color: var(--amber); border-color: rgba(245,166,35,0.45); }
+.sleep-panel .row { gap: 8px; max-width: 360px; }
+.sleep-card {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 6;
+  padding: 26px 30px; border-radius: var(--radius); text-align: center;
+  background: rgba(14,15,26,0.95); border: 1px solid var(--border);
+}
+.sleep-card h3 { margin: 0 0 6px; }

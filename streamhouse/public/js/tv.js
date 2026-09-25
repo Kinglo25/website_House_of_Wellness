@@ -194,8 +194,11 @@ function onKeyDown (event) {
   // the choice meant a setting changed — and saved — just by passing it.
 
   // In the player, left/right belong to seeking — the player handles those.
+  // …except inside one of its panels (subtitles, sleep timer), where they move
+  // between the choices like anywhere else.
   const inPlayer = Boolean(document.querySelector('.player-wrap'))
-  if (inPlayer && (key === 'ArrowLeft' || key === 'ArrowRight')) return
+  const inPanel = Boolean(event.target.closest?.('.sub-panel, .sleep-card, .shortcuts'))
+  if (inPlayer && !inPanel && (key === 'ArrowLeft' || key === 'ArrowRight')) return
 
   const active = document.activeElement && document.activeElement !== document.body
     ? document.activeElement

@@ -76,6 +76,7 @@ export default async function player ({ params, query, container }) {
         </select>
         <select class="field" id="pl-subs" style="width:auto;display:none"></select>
         <button class="btn ghost small" data-act="subopts" hidden title="Subtitle size and timing">Aa</button>
+        <button class="btn ghost small" data-act="sleep" title="Sleep timer">☾</button>
         <button class="btn ghost icon" data-act="mute">🔊</button>
         <input class="vol" type="range" min="0" max="1" step="0.05" value="1">
         <button class="btn ghost icon" data-act="fullscreen">⛶</button>
@@ -295,6 +296,62 @@ export default async function player ({ params, query, container }) {
     }
   })
 
+  /* ----------------------------------------------------------- sleep timer */
+
+  // Plex's and Netflix's sleep timer: stop in a while, or at the end of this
+  // one, for whoever falls asleep in front of it.
+  const SLEEP_CHOICES = [[15, '15 minutes'], [30, '30 minutes'], [45, '45 minutes'], [60, '1 hour'], ['end', 'End of this one'], [0, 'Off']]
+  const sleep = { at: 0, end: false, tick: null }
+  const sleepButton = overlayBottom.querySelector('[data-act="sleep"]')
+  const sleepPanel = h(`
+    <div class="sub-panel sleep-panel" hidden>
+      <div class="tiny muted">Sleep timer — pause after</div>
+      <div class="row wrap">${SLEEP_CHOICES.map(([value, label]) => `<button class="chip" data-sleep="${value}">${esc(label)}</button>`).join('')}</div>
+    </div>`)
+  overlayBottom.append(sleepPanel)
+
+  const drawSleep = () => {
+    const left = sleep.at ? Math.max(0, Math.ceil((sleep.at - Date.now()) / 60000)) : 0
+    sleepButton.textContent = sleep.end ? '☾ end' : left ? `☾ ${left}m` : '☾'
+    sleepButton.classList.toggle('on', Boolean(sleep.end || sleep.at))
+  }
+  const fallAsleep = () => {
+    clearInterval(sleep.tick)
+    Object.assign(sleep, { at: 0, end: false, tick: null })
+    drawSleep()
+    video.pause()
+    saveProgress()
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    const card = h(`<div class="sleep-card" role="dialog" aria-label="Sleep timer">
+        <h3>☾ Paused by the sleep timer</h3>
+        <p class="muted">Your place is saved.</p>
+        <button class="btn primary">▶ Keep watching</button>
+      </div>`)
+    root.append(card)
+    const button = card.querySelector('button')
+    button.addEventListener('click', () => { card.remove(); video.play() })
+    button.focus({ preventScroll: true })
+  }
+  const setSleep = value => {
+    clearInterval(sleep.tick)
+    Object.assign(sleep, { at: 0, end: false, tick: null })
+    if (value === 'end') sleep.end = true
+    else if (Number(value) > 0) {
+      sleep.at = Date.now() + Number(value) * 60000
+      sleep.tick = setInterval(() => {
+        if (Date.now() >= sleep.at) fallAsleep()
+        else drawSleep()
+      }, 5000)
+    }
+    drawSleep()
+    sleepPanel.hidden = true
+    toast(value === 'end' ? 'Pausing at the end of this one' : Number(value) > 0 ? `Pausing in ${value} minutes` : 'Sleep timer off')
+  }
+  sleepPanel.addEventListener('click', event => {
+    const value = event.target.closest('[data-sleep]')?.dataset.sleep
+    if (value !== undefined) setSleep(value)
+  })
+
   /* ------------------------------------------------------------ skip intro */
 
   // Learned per show from people skipping its opening by hand: see intro.js.
@@ -337,6 +394,12 @@ export default async function player ({ params, query, container }) {
   })
 
   video.addEventListener('ended', async () => {
+    // "End of this one": it has ended, so the timer has done its job — and
+    // whatever might have played next does not.
+    if (sleep.end) {
+      Object.assign(sleep, { end: false })
+      drawSleep()
+    }
     await saveProgress(true)
     history.back()
   })
@@ -546,6 +609,10 @@ export default async function player ({ params, query, container }) {
       event.target.textContent = video.muted ? '🔇' : '🔊'
     }
     if (act === 'subopts') subPanel.hidden = !subPanel.hidden
+    if (act === 'sleep') {
+      sleepPanel.hidden = !sleepPanel.hidden
+      if (!sleepPanel.hidden) sleepPanel.querySelector('.chip')?.focus({ preventScroll: true })
+    }
     if (act === 'fullscreen') {
       if (document.fullscreenElement) document.exitFullscreen()
       else root.requestFullscreen?.()
@@ -648,6 +715,8 @@ export default async function player ({ params, query, container }) {
     // Any key brings the controls back — on a TV the remote is the only way in.
     wake()
     if (event.target.matches('input, select, textarea')) return
+    // Arrows inside a panel choose within it; they do not seek.
+    if (event.key.startsWith('Arrow') && event.target.closest('.sub-panel')) return
     switch (event.key) {
       case ' ': case 'k':
         event.preventDefault()
@@ -713,6 +782,7 @@ export default async function player ({ params, query, container }) {
   return {
     async destroy () {
       tracker?.flush()
+      clearInterval(sleep.tick)
       state.destroyed = true
       clearInterval(state.statsTimer)
       clearInterval(state.saveTimer)

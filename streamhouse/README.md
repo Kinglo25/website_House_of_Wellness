@@ -361,6 +361,13 @@ dried up), the player offers **Pick another stream**: choose a new one and it ca
 from the same position. Titles watched to the end drop off the list by themselves, and
 the × on a tile takes it off by hand.
 
+### Sleep timer
+
+**☾** in the player pauses after 15, 30 or 45 minutes, an hour, or at the end of what
+is playing — as Plex and Netflix do for whoever falls asleep in front of it. The button
+counts down; when it fires the film pauses, full screen closes, the place is saved, and
+**Keep watching** is one press away.
+
 ### Skip intro
 
 Netflix, Plex and Jellyfin offer **Skip intro**; Plex and Jellyfin find the intro by
