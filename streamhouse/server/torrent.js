@@ -83,6 +83,13 @@ function pickLargestVideo (files) {
   return pool.reduce((best, file) => (!best || file.length > best.length ? file : best), null)
 }
 
+// A torrent that is not in the list: a stale link, not a server fault.
+function notFound () {
+  const error = new Error('Torrent not found')
+  error.status = 404
+  return error
+}
+
 class TorrentEngine {
   constructor () {
     this.store = new JsonStore('torrents', [])
@@ -306,7 +313,7 @@ class TorrentEngine {
 
   selectFiles (id, indices) {
     const record = this.record(id)
-    if (!record) throw new Error('Torrent not found')
+    if (!record) throw notFound()
     record.selectedFiles = Array.isArray(indices) ? indices.map(Number).filter(n => Number.isInteger(n)) : []
     if (!record.selectedFiles.length) delete record.selectedFiles
     record.mode = 'download'
@@ -318,7 +325,7 @@ class TorrentEngine {
 
   pause (id) {
     const record = this.record(id)
-    if (!record) throw new Error('Torrent not found')
+    if (!record) throw notFound()
     this.torrent(record.id)?.pause()
     record.status = 'paused'
     this.store.save()
@@ -327,7 +334,7 @@ class TorrentEngine {
 
   resume (id) {
     const record = this.record(id)
-    if (!record) throw new Error('Torrent not found')
+    if (!record) throw notFound()
     let torrent = this.torrent(record.id)
     if (!torrent) torrent = this._attach(record, { paused: false })
     else torrent.resume()
@@ -340,7 +347,7 @@ class TorrentEngine {
 
   remove (id, { deleteFiles = false } = {}) {
     const record = this.record(id)
-    if (!record) throw new Error('Torrent not found')
+    if (!record) throw notFound()
     const torrent = this.torrent(record.id)
     if (torrent) {
       const folder = torrent.name ? path.join(record.savePath, torrent.name) : null
@@ -368,7 +375,7 @@ class TorrentEngine {
     let record = this.record(id)
     if (!record) {
       const hash = infoHashOf(id)
-      if (!hash) throw new Error('Torrent not found')
+      if (!hash) throw notFound()
       record = this.add({ infoHash: hash, mode: 'stream' })
     }
     let torrent = this.torrent(record.id)

@@ -38,7 +38,9 @@ form.addEventListener('submit', event => {
 // Search as you type, but only once typing settles.
 input.addEventListener('input', debounce(() => {
   const term = input.value.trim()
-  if (term.length >= 2) navigate(`/search?q=${encodeURIComponent(term)}`, { replace: true })
+  // The first search from another page is a step you can go Back from; the
+  // letters typed after it just refine that search.
+  if (term.length >= 2) navigate(`/search?q=${encodeURIComponent(term)}`, { replace: currentPath().startsWith('/search') })
 }, 450))
 
 window.addEventListener('keydown', event => {
@@ -128,4 +130,7 @@ initTvMode()
 window.addEventListener('hashchange', () => {
   const path = currentPath()
   if (!path.startsWith('/search')) input.value = ''
+  // Back to an earlier search: the box shows what the results are for. Not
+  // while typing, when the route is following the box.
+  else if (document.activeElement !== input) input.value = new URLSearchParams(path.split('?')[1] || '').get('q') || ''
 })
