@@ -33,8 +33,11 @@ export function metaCard (meta, { progress = 0, ribbon = '', sub = '', open = ''
     event.stopPropagation()
     const button = event.currentTarget
     button.disabled = true
-    if (await onRemove() !== false) card.remove()
-    else button.disabled = false
+    if (await onRemove() === false) return (button.disabled = false)
+    const strip = card.parentElement
+    card.remove()
+    // The last tile gone: a row with nothing in it goes too.
+    if (strip && !strip.children.length) strip.closest('.shelf')?.setAttribute('hidden', '')
   })
   card.addEventListener('click', go)
   card.addEventListener('keydown', event => {

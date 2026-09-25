@@ -342,6 +342,7 @@ where you stopped:
 - A series page opens on the season and episode you are up to, with that episode's
   streams already listed. The big button says what it will do: **Resume S1:E3 · 12 min
   left**, **Play S1:E4**, **S2:E1 airs 3 Oct** when you are caught up, or **Watch again**.
+  Beside a resume, **Start over** plays it from the beginning instead.
 - Episodes carry a ✓ once watched and a bar while part-way through; ones not out yet
   show their air date. **Mark watched** sets or clears the tick by hand, and **Mark
   season watched** does a whole season — a finished season's tab gets a ✓ too.

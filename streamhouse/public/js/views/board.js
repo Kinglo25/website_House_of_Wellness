@@ -112,7 +112,11 @@ async function renderActiveDownloads (root) {
   try {
     data = await api.torrents()
   } catch { return }
-  const active = data.torrents.filter(torrent => torrent.status !== 'done')
+  // Downloads you asked for that are not finished. A finished one keeps
+  // seeding, and a stream's own cache is not something you asked to keep, so
+  // neither belongs on a row called "Downloading now".
+  const active = data.torrents.filter(torrent =>
+    torrent.mode === 'download' && !['done', 'seeding', 'error'].includes(torrent.status) && torrent.progress < 1)
   if (!active.length) return
 
   const node = shelf({ title: 'Downloading now', moreHref: '#/downloads' })

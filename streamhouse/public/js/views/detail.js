@@ -48,9 +48,10 @@ export default async function detail ({ params, query = {}, container }) {
   const heroNode = hero(meta, {
     inLibrary: library.some(item => item.id === meta.id),
     primary,
-    play: async () => {
+    play: async ({ fromStart = false } = {}) => {
       const action = primary
-      if (action.href) return (location.hash = action.href)
+      state.fromStart = fromStart
+      if (action.href && !fromStart) return (location.hash = action.href)
       if (action.video && state.streamsFor !== action.video.id) {
         episodes?.select(action.video)
         await loadStreams()
@@ -150,7 +151,8 @@ function primaryAction ({ meta, next, progress, id }) {
       const left = minutesLeft(entry)
       return {
         label: `▶ Resume${left ? ` · ${left} min left` : ''}`,
-        href: entry.meta?.playback ? resumeHref(entry) : null
+        href: entry.meta?.playback ? resumeHref(entry) : null,
+        resume: true
       }
     }
     return { label: entry?.watched ? '▶ Watch again' : '▶ Play' }
@@ -161,7 +163,8 @@ function primaryAction ({ meta, next, progress, id }) {
     return {
       label: `▶ Resume ${label}${left ? ` · ${left} min left` : ''}`,
       href: next.entry.meta?.playback ? resumeHref(next.entry) : null,
-      video: next.video
+      video: next.video,
+      resume: true
     }
   }
   if (next.action === 'upcoming') return { label: `${label} airs ${airDate(next.video)}`, disabled: true }
@@ -204,6 +207,7 @@ function hero (meta, { inLibrary, primary, play }) {
         ${meta.director?.length ? `<p class="tiny muted">Director: ${esc([].concat(meta.director).slice(0, 3).join(', '))}</p>` : ''}
         <div class="cta">
           <button class="btn primary" data-act="play" ${primary.disabled ? 'disabled' : ''}>${esc(primary.label)}</button>
+          <button class="btn" data-act="restart" ${primary.resume ? '' : 'hidden'} title="Play from the beginning">↺ Start over</button>
           <button class="btn" data-act="save">${inLibrary ? '✓ In library' : '＋ Add to library'}</button>
           ${trailer ? `<a class="btn ghost" target="_blank" rel="noreferrer" href="https://www.youtube.com/watch?v=${esc(trailer)}">Trailer</a>` : ''}
           ${meta.imdb_id ? `<a class="btn ghost" target="_blank" rel="noreferrer" href="https://www.imdb.com/title/${esc(meta.imdb_id)}/">IMDb</a>` : ''}
@@ -213,9 +217,13 @@ function hero (meta, { inLibrary, primary, play }) {
 
   const playButton = node.querySelector('[data-act="play"]')
   playButton.addEventListener('click', () => play())
+  // Netflix's "Play from beginning", beside a resume.
+  const restartButton = node.querySelector('[data-act="restart"]')
+  restartButton.addEventListener('click', () => play({ fromStart: true }))
   node.setPrimary = action => {
     playButton.textContent = action.label
     playButton.disabled = Boolean(action.disabled)
+    restartButton.hidden = !action.resume
   }
 
   // A toggle, as My List is: the button says whether it is saved, and undoes.
@@ -444,6 +452,12 @@ function streamRow (stream, { type, meta, state }) {
     return { url: stream.url, title: playbackMeta.title }
   }))
 
+  // Asked for once, by the Start over button, then forgotten.
+  const fromStart = () => {
+    const asked = state.fromStart
+    state.fromStart = false
+    return asked ? '&from=start' : ''
+  }
   row.querySelector('[data-act="play"]').addEventListener('click', async event => {
     const button = event.currentTarget
     button.disabled = true
@@ -457,9 +471,9 @@ function streamRow (stream, { type, meta, state }) {
           mode: 'stream',
           meta: playbackMeta
         })
-        location.hash = `#/player/torrent/${record.id}?fileIdx=${stream.fileIdx ?? ''}&meta=${encodeURIComponent(JSON.stringify(playbackMeta))}`
+        location.hash = `#/player/torrent/${record.id}?fileIdx=${stream.fileIdx ?? ''}&meta=${encodeURIComponent(JSON.stringify(playbackMeta))}${fromStart()}`
       } else if (stream.url) {
-        location.hash = `#/player/direct/x?src=${encodeURIComponent(stream.url)}&meta=${encodeURIComponent(JSON.stringify(playbackMeta))}`
+        location.hash = `#/player/direct/x?src=${encodeURIComponent(stream.url)}&meta=${encodeURIComponent(JSON.stringify(playbackMeta))}${fromStart()}`
       } else if (stream.externalUrl) {
         window.open(stream.externalUrl, '_blank', 'noreferrer')
       } else {

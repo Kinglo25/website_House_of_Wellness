@@ -20,6 +20,8 @@ export default async function player ({ params, query, container }) {
     meta = query.meta ? { videoId: query.meta } : {}
   }
   if (!meta.title && query.title) meta.title = query.title
+  // "Start over": begin at the beginning whatever position was saved.
+  const fromStart = query.from === 'start'
 
   // The title page to fall back to when the saved stream cannot be started
   // again — its sources may have gone away since it was watched.
@@ -121,7 +123,7 @@ export default async function player ({ params, query, container }) {
       try {
         saved = (await api.progress())[key] || null
       } catch { /* no saved position */ }
-      start = Number(query.t) || saved?.time || 0
+      start = Number(query.t) || (fromStart ? 0 : saved?.time) || 0
     }
     try {
       await api.playInVlc({
@@ -170,7 +172,7 @@ export default async function player ({ params, query, container }) {
       try {
         saved = (await api.progress())[key] || null
       } catch { /* no saved position */ }
-      const start = Number(query.t) || saved?.time || 0
+      const start = Number(query.t) || (fromStart ? 0 : saved?.time) || 0
       // The native player reports a bare id and position back, so write the
       // title, poster and stream down here — otherwise continue watching ends
       // up with an entry it can neither name nor resume.
@@ -218,7 +220,7 @@ export default async function player ({ params, query, container }) {
   video.addEventListener('loadedmetadata', async () => {
     root.querySelector('#pl-dur').textContent = clock(video.duration)
     let start = resumeAt
-    if (!start) {
+    if (!start && !fromStart) {
       try {
         const all = await api.progress()
         const saved = all[progressKey]
