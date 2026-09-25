@@ -316,8 +316,15 @@ is fine and plays anywhere else.
 
 The player streams over HTTP byte ranges from the local engine, so seeking works while
 the file is still downloading. Keyboard: `space`/`k` play-pause, `←`/`→` 5s, `↑`/`↓`
-volume, `<`/`>` speed (0.5× to 2×), `f` fullscreen, `m` mute, `esc` back. The subtitle
-language you pick — or *off* — is remembered and chosen by itself next time.
+volume, `<`/`>` speed (0.5× to 2×), `g`/`h` subtitles a quarter-second earlier or later,
+`f` fullscreen, `m` mute, `esc` back. The subtitle language you pick — or *off* — is
+remembered and chosen by itself next time, and **Aa** beside it sets their size
+(remembered) and timing (for this file), for the torrent whose subtitles run late.
+
+On a phone it behaves like the Netflix app: a tap shows or hides the controls, a double
+tap on the left or right of the picture jumps ten seconds, and the bar under the picture
+can be dragged with a finger, showing the time it will land on. On a TV, any button on the
+remote brings the controls back, and they stay while paused.
 
 Playback position is remembered every ten seconds and whenever you leave the player, and
 shows up under *Continue watching* on the home page and in the library. A tile there goes

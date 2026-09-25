@@ -56,9 +56,10 @@ export default async function player ({ params, query, container }) {
         <span class="grow"></span>
         <span class="tiny muted" id="pl-net"></span>
         <select class="field" id="pl-speed" style="width:auto" title="Playback speed (&lt; and &gt;)">
-          ${SPEEDS.map(rate => `<option value="${rate}" ${rate === 1 ? 'selected' : ''}>${rate === 1 ? 'Normal speed' : `${rate}×`}</option>`).join('')}
+          ${SPEEDS.map(rate => `<option value="${rate}" ${rate === 1 ? 'selected' : ''}>${rate}×</option>`).join('')}
         </select>
         <select class="field" id="pl-subs" style="width:auto;display:none"></select>
+        <button class="btn ghost small" data-act="subopts" hidden title="Subtitle size and timing">Aa</button>
         <button class="btn ghost icon" data-act="mute">🔊</button>
         <input class="vol" type="range" min="0" max="1" step="0.05" value="1">
         <button class="btn ghost icon" data-act="fullscreen">⛶</button>
@@ -267,6 +268,7 @@ export default async function player ({ params, query, container }) {
     }
     root.querySelector('#pl-cur').textContent = clock(video.currentTime)
     const played = video.duration ? video.currentTime / video.duration : 0
+    if (scrubbing) return
     overlayBottom.querySelector('.played').style.width = `${played * 100}%`
     overlayBottom.querySelector('.knob').style.left = `${played * 100}%`
     if (video.buffered.length) {
@@ -324,6 +326,70 @@ export default async function player ({ params, query, container }) {
     }, 2000)
   }
 
+  /* ------------------------------------------------ subtitle size, timing */
+
+  // Stremio's subtitle options: a size, remembered, and a delay for a file whose
+  // subtitles run early or late — the usual thing with a torrent — which is not.
+  // `g` and `h` nudge the delay, as they do in VLC.
+  const SUB_SIZES = { s: 'Small', m: 'Medium', l: 'Large' }
+  const subStyle = { delay: 0, size: 'm', originals: new WeakMap() }
+  try { subStyle.size = SUB_SIZES[localStorage.getItem('sh-sub-size')] ? localStorage.getItem('sh-sub-size') : 'm' } catch { /* default */ }
+  root.classList.add(`sub-${subStyle.size}`)
+  const subPanel = h(`
+    <div class="sub-panel" hidden>
+      <div class="row"><span class="tiny muted">Size</span>
+        ${Object.entries(SUB_SIZES).map(([key, label]) => `<button class="chip" data-size="${key}">${label}</button>`).join('')}</div>
+      <div class="row"><span class="tiny muted">Timing</span>
+        <button class="chip" data-delay="-0.5">−0.5s</button><b class="delay">0.0s</b><button class="chip" data-delay="0.5">+0.5s</button></div>
+    </div>`)
+  overlayBottom.append(subPanel)
+  const drawSubPanel = () => {
+    subPanel.querySelectorAll('[data-size]').forEach(chip => chip.classList.toggle('active', chip.dataset.size === subStyle.size))
+    subPanel.querySelector('.delay').textContent = `${subStyle.delay > 0 ? '+' : ''}${subStyle.delay.toFixed(2).replace(/0$/, '')}s`
+  }
+  // Moves every cue by the delay, from the times the file gave it.
+  const applyDelay = () => {
+    for (const track of video.textTracks) {
+      for (const cue of track.cues || []) {
+        if (!subStyle.originals.has(cue)) subStyle.originals.set(cue, { start: cue.startTime, end: cue.endTime })
+        const { start, end } = subStyle.originals.get(cue)
+        cue.startTime = Math.max(0, start + subStyle.delay)
+        cue.endTime = Math.max(0, end + subStyle.delay)
+      }
+    }
+    placeCues()
+  }
+  // While the controls are up, subtitles sit above them rather than behind,
+  // as Netflix lifts its own.
+  const placeCues = () => {
+    const raised = !root.classList.contains('idle')
+    const line = raised ? (window.innerWidth < 700 ? -6 : -4) : 'auto'
+    for (const track of video.textTracks) {
+      for (const cue of track.cues || []) {
+        if ('line' in cue && cue.line !== line) cue.line = line
+      }
+    }
+  }
+  new MutationObserver(placeCues).observe(root, { attributes: true, attributeFilter: ['class'] })
+  const setDelay = value => {
+    subStyle.delay = Math.round(value * 100) / 100
+    applyDelay()
+    drawSubPanel()
+  }
+  subPanel.addEventListener('click', event => {
+    const size = event.target.closest('[data-size]')?.dataset.size
+    if (size) {
+      root.classList.remove(`sub-${subStyle.size}`)
+      subStyle.size = size
+      root.classList.add(`sub-${size}`)
+      try { localStorage.setItem('sh-sub-size', size) } catch { /* not remembered */ }
+      drawSubPanel()
+    }
+    const delay = event.target.closest('[data-delay]')?.dataset.delay
+    if (delay) setDelay(subStyle.delay + Number(delay))
+  })
+  drawSubPanel()
+
   // Subtitles offered by add-ons for this exact video id.
   if (meta.videoId && meta.type) {
     api.subtitles(meta.type, meta.videoId).then(subs => {
@@ -339,6 +405,9 @@ export default async function player ({ params, query, container }) {
       const show = () => {
         ;[...video.querySelectorAll('track')].forEach(track => track.remove())
         const sub = chosen()
+        const options = overlayBottom.querySelector('[data-act="subopts"]')
+        options.hidden = !sub
+        if (!sub) subPanel.hidden = true
         if (!sub) return
         const track = document.createElement('track')
         track.kind = 'subtitles'
@@ -346,6 +415,7 @@ export default async function player ({ params, query, container }) {
         track.srclang = (sub.lang || 'en').slice(0, 2)
         track.src = api.subtitleUrl(sub.url)
         track.default = true
+        track.addEventListener('load', applyDelay)
         video.append(track)
         video.textTracks[video.textTracks.length - 1].mode = 'showing'
       }
@@ -366,12 +436,46 @@ export default async function player ({ params, query, container }) {
 
   /* ------------------------------------------------------------ controls */
 
+  // The seek bar follows a finger or a held mouse button, as every phone
+  // player's does, and says where it would land before letting go.
   const seek = overlayBottom.querySelector('.seek')
-  seek.addEventListener('click', event => {
+  const tip = h('<div class="seek-tip" hidden></div>')
+  seek.append(tip)
+  const ratioAt = event => {
     const rect = seek.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
-    if (video.duration) video.currentTime = ratio * video.duration
+    return Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+  }
+  const showTip = ratio => {
+    if (!Number.isFinite(video.duration)) return
+    tip.hidden = false
+    tip.style.left = `${ratio * 100}%`
+    tip.textContent = clock(ratio * video.duration)
+  }
+  let scrubbing = false
+  seek.addEventListener('pointerdown', event => {
+    if (!video.duration) return
+    scrubbing = true
+    seek.setPointerCapture?.(event.pointerId)
+    const ratio = ratioAt(event)
+    showTip(ratio)
+    overlayBottom.querySelector('.played').style.width = `${ratio * 100}%`
+    overlayBottom.querySelector('.knob').style.left = `${ratio * 100}%`
   })
+  seek.addEventListener('pointermove', event => {
+    const ratio = ratioAt(event)
+    showTip(ratio)
+    if (!scrubbing) return
+    overlayBottom.querySelector('.played').style.width = `${ratio * 100}%`
+    overlayBottom.querySelector('.knob').style.left = `${ratio * 100}%`
+  })
+  seek.addEventListener('pointerup', event => {
+    if (!scrubbing) return
+    scrubbing = false
+    if (video.duration) video.currentTime = ratioAt(event) * video.duration
+    if (event.pointerType !== 'mouse') tip.hidden = true
+  })
+  seek.addEventListener('pointercancel', () => { scrubbing = false; tip.hidden = true })
+  seek.addEventListener('pointerleave', () => { if (!scrubbing) tip.hidden = true })
 
   overlayBottom.addEventListener('click', event => {
     const act = event.target.closest('[data-act]')?.dataset.act
@@ -382,6 +486,7 @@ export default async function player ({ params, query, container }) {
       video.muted = !video.muted
       event.target.textContent = video.muted ? '🔇' : '🔊'
     }
+    if (act === 'subopts') subPanel.hidden = !subPanel.hidden
     if (act === 'fullscreen') {
       if (document.fullscreenElement) document.exitFullscreen()
       else root.requestFullscreen?.()
@@ -433,11 +538,56 @@ export default async function player ({ params, query, container }) {
     }
   })
 
-  video.addEventListener('click', () => {
-    video.paused ? video.play() : video.pause()
+  // A mouse click plays and pauses. A tap does what it does on Netflix's phone
+  // app: shows or hides the controls, and a double tap on either side of the
+  // picture jumps ten seconds back or forward.
+  let pointerType = 'mouse'
+  let lastTap = { at: 0, side: '' }
+  let tapTimer = null
+  // Read before the tap's own compatibility mousemove wakes them.
+  let wasHidden = false
+  video.addEventListener('pointerdown', event => {
+    pointerType = event.pointerType || 'mouse'
+    wasHidden = root.classList.contains('idle')
+  })
+  video.addEventListener('click', event => {
+    if (pointerType === 'mouse') {
+      video.paused ? video.play() : video.pause()
+      return
+    }
+    const rect = video.getBoundingClientRect()
+    const x = (event.clientX - rect.left) / rect.width
+    const side = x < 0.35 ? 'back' : x > 0.65 ? 'fwd' : ''
+    const now = Date.now()
+    if (side && lastTap.side === side && now - lastTap.at < 350) {
+      clearTimeout(tapTimer)
+      lastTap = { at: now, side }
+      video.currentTime = side === 'back' ? Math.max(0, video.currentTime - 10) : Math.min(video.duration || Infinity, video.currentTime + 10)
+      flash(side === 'back' ? '⟲ 10s' : '10s ⟳', side)
+      return
+    }
+    lastTap = { at: now, side }
+    const hidden = wasHidden
+    clearTimeout(tapTimer)
+    // Wait out a possible second tap before hiding what the first one showed.
+    tapTimer = setTimeout(() => {
+      if (hidden) wake()
+      else if (!video.paused) {
+        clearTimeout(state.idleTimer)
+        root.classList.add('idle')
+      }
+    }, side ? 360 : 0)
   })
 
+  const flash = (text, side) => {
+    const note = h(`<div class="seek-flash ${side}">${esc(text)}</div>`)
+    root.append(note)
+    setTimeout(() => note.remove(), 650)
+  }
+
   const onKey = event => {
+    // Any key brings the controls back — on a TV the remote is the only way in.
+    wake()
     if (event.target.matches('input, select, textarea')) return
     switch (event.key) {
       case ' ': case 'k':
@@ -457,6 +607,11 @@ export default async function player ({ params, query, container }) {
       }
       case 'f': document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen?.(); break
       case 'm': video.muted = !video.muted; break
+      case 'g': case 'h':
+        if (!video.querySelector('track')) break
+        setDelay(subStyle.delay + (event.key === 'g' ? -0.25 : 0.25))
+        toast(`Subtitles ${subStyle.delay > 0 ? `${subStyle.delay}s later` : subStyle.delay < 0 ? `${-subStyle.delay}s earlier` : 'back in time'}`)
+        break
       case '<': case '>': {
         const at = SPEEDS.indexOf(video.playbackRate)
         const step = event.key === '>' ? 1 : -1
@@ -479,6 +634,8 @@ export default async function player ({ params, query, container }) {
     }, 2800)
   }
   root.addEventListener('mousemove', wake)
+  // Paused, the controls stay: there is nothing to hide them for.
+  video.addEventListener('pause', wake)
   wake()
 
   return {

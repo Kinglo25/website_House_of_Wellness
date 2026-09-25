@@ -506,7 +506,10 @@ select.field option { background: var(--bg-elevated); }
   /* In the player the phone's own volume keys do this job. */
   .player-top { padding: 12px 14px; gap: 8px; flex-wrap: wrap; }
   .player-bottom { padding: 12px 14px calc(14px + env(safe-area-inset-bottom)); }
-  .player-controls { gap: 8px; }
+  .player-controls { gap: 8px; flex-wrap: wrap; }
+  .player-controls .time { white-space: nowrap; font-size: 12px; }
+  .player-controls .grow { flex-basis: 0; }
+  .player-controls select.field { padding: 6px 8px; font-size: 12px; max-width: 42vw; }
   .vol { display: none; }
 }
 
@@ -624,3 +627,45 @@ html.tv .card .remove { opacity: 1; width: 38px; height: 38px; font-size: 17px; 
 .stream.episode.unaired { opacity: 0.55; }
 .stream.episode .ep-progress { height: 4px; border-radius: 2px; background: var(--surface-strong); margin-top: 8px; max-width: 320px; overflow: hidden; }
 .stream.episode .ep-progress i { display: block; height: 100%; background: var(--accent); }
+
+/* Scrubbing: the time under the finger or pointer, and a bigger target to hit */
+.seek { touch-action: none; }
+.seek::before { content: ''; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }
+.seek .seek-tip {
+  position: absolute; bottom: 16px; transform: translateX(-50%);
+  background: rgba(0,0,0,0.85); color: #fff; border-radius: 6px;
+  padding: 3px 8px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+  pointer-events: none; white-space: nowrap;
+}
+/* A double tap on either side, answered where it landed */
+.seek-flash {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  padding: 14px 20px; border-radius: 40px; background: rgba(0,0,0,0.55);
+  font-weight: 700; font-size: 18px; pointer-events: none;
+  animation: seek-flash 0.65s ease-out forwards;
+}
+.seek-flash.back { left: 12%; }
+.seek-flash.fwd { right: 12%; }
+@keyframes seek-flash { from { opacity: 1; } to { opacity: 0; } }
+
+/* Subtitle size, chosen in the player's Aa panel */
+.player-wrap.sub-s video::cue { font-size: 70%; }
+.player-wrap.sub-l video::cue { font-size: 145%; }
+.player-wrap video::cue { background: rgba(0,0,0,0.6); }
+.sub-panel {
+  position: absolute; right: 24px; bottom: 100%; margin-bottom: 6px;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px; border-radius: var(--radius);
+  background: rgba(14,15,26,0.94); border: 1px solid var(--border);
+}
+.sub-panel .row { gap: 8px; align-items: center; }
+.sub-panel .row > span { width: 52px; }
+.sub-panel .delay { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Toasts only ever say something, so they never swallow a click meant for what
+   is under them — the player's controls sit exactly where they appear. */
+#toasts { pointer-events: none; }
+/* In the player, they go to the top, clear of the controls. */
+body:has(#player-root .player-wrap) #toasts {
+  top: 76px; bottom: auto; left: 50%; right: auto; transform: translateX(-50%); align-items: center;
+}
