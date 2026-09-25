@@ -56,7 +56,7 @@ export default async function detail ({ params, query = {}, container }) {
         episodes?.select(action.video)
         await loadStreams()
       }
-      const first = streamsSection.querySelector('.stream-list .stream [data-act="play"]')
+      const first = streamsSection.querySelector('.stream-list .stream:not([hidden]) [data-act="play"]')
       if (first) first.click()
       else toast('No stream is available yet for this title')
     }
@@ -121,7 +121,8 @@ export default async function detail ({ params, query = {}, container }) {
       }
       const list = h('<div class="stream-list"></div>')
       streams.forEach(stream => list.append(streamRow(stream, { type, meta, state })))
-      streamsSection.append(list)
+      const { bar, more } = narrowing(streams, list)
+      streamsSection.append(bar, list, more)
     } catch (err) {
       if (state.streamsFor !== videoId) return
       loading.remove()
@@ -380,6 +381,50 @@ function renderEpisodes (meta, state, progress, onPick, onWatched) {
 }
 
 /* ---------------------------------------------------------------- streams */
+
+const FIRST_STREAMS = 10
+const RESOLUTION_ORDER = ['2160p', '1440p', '1080p', '720p', '576p', '480p', '360p']
+
+// A stream add-on can answer with fifty rows. As Stremio does, they can be
+// narrowed to one resolution, and only the best ten show until asked — the
+// list is ranked, so the rest are the ones least likely to be wanted, and a
+// TV remote should not have to scroll past them.
+function narrowing (streams, list) {
+  const rows = [...list.children]
+  const resolutionOf = stream => stream.quality?.resolution || ''
+  const present = [...new Set(streams.map(resolutionOf).filter(Boolean))]
+    .sort((a, b) => (RESOLUTION_ORDER.indexOf(a) + 1 || 99) - (RESOLUTION_ORDER.indexOf(b) + 1 || 99))
+  const bar = h('<div class="row wrap stream-filters"></div>')
+  const view = { resolution: '', all: false }
+  const more = h('<button class="btn small ghost show-all"></button>')
+
+  function apply () {
+    let shown = 0
+    let matching = 0
+    rows.forEach((row, index) => {
+      const fits = !view.resolution || resolutionOf(streams[index]) === view.resolution
+      if (fits) matching += 1
+      const show = fits && (view.all || shown < FIRST_STREAMS)
+      if (show) shown += 1
+      row.hidden = !show
+    })
+    more.hidden = view.all || matching <= FIRST_STREAMS
+    more.textContent = `Show all ${matching} streams`
+    bar.querySelectorAll('.chip').forEach(chip => chip.classList.toggle('active', chip.dataset.resolution === view.resolution))
+  }
+
+  if (present.length > 1) {
+    for (const resolution of ['', ...present]) {
+      const count = resolution ? streams.filter(stream => resolutionOf(stream) === resolution).length : streams.length
+      const chip = h(`<button class="chip" data-resolution="${esc(resolution)}">${esc(resolution || 'All')} <span class="muted tiny">${count}</span></button>`)
+      chip.addEventListener('click', () => { view.resolution = resolution; view.all = false; apply() })
+      bar.append(chip)
+    }
+  }
+  more.addEventListener('click', () => { view.all = true; apply() })
+  apply()
+  return { bar, more }
+}
 
 // What the parser found, as chips. Only what it is sure about: an add-on that
 // says nothing useful gets no badges rather than a row of "unknown".

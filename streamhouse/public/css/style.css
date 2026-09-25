@@ -724,3 +724,8 @@ body:has(#player-root .player-wrap) #toasts {
 html.tv .billboard { min-height: 520px; padding: 56px; }
 html.tv .billboard h1 { font-size: 56px; }
 html.tv .billboard .eyebrow { font-size: 15px; }
+
+/* Narrowing a long stream list */
+.stream-filters { margin: 0 0 12px; }
+.stream-filters:empty { display: none; }
+.show-all { margin-top: 10px; }
