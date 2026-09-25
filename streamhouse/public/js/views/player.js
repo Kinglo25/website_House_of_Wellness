@@ -88,6 +88,9 @@ export default async function player ({ params, query, container }) {
   root.append(overlayTop, overlayBottom, busy)
 
   const state = { id: null, fileIdx: null, statsTimer: null, saveTimer: null, idleTimer: null, destroyed: false }
+  // Whether every byte is here: a torrent's preview frames are only fetched
+  // then, so scrubbing never pulls pieces from the network ahead of playback.
+  let wholeFile = kind !== 'torrent'
 
   /* -------------------------------------------------------- progress notes */
 
@@ -440,6 +443,7 @@ export default async function player ({ params, query, container }) {
         if (!record) return
         root.querySelector('#pl-net').textContent =
           `↓ ${bytes(record.downloadSpeed, true)} · ${record.numPeers} peers · ${Math.round(record.progress * 100)}% cached`
+        wholeFile = record.progress >= 1
         if (busy.hidden === false && !video.error) {
           root.querySelector('#pl-busy') && (root.querySelector('#pl-busy').textContent =
             record.numPeers ? `Buffering… ${bytes(record.downloadSpeed, true)} from ${record.numPeers} peers` : 'Looking for peers…')
@@ -567,11 +571,45 @@ export default async function player ({ params, query, container }) {
     const rect = seek.getBoundingClientRect()
     return Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
   }
+  // Trickplay, as Jellyfin, Netflix and YouTube show it: the frame at the
+  // point under the pointer, drawn from a second, silent copy of the video.
+  const thumb = document.createElement('canvas')
+  thumb.width = 192
+  thumb.height = 108
+  const tipTime = document.createElement('span')
+  let preview = null
+  let previewWanted = null
+  const previewAt = time => {
+    if (!wholeFile || !src) return
+    if (!preview) {
+      preview = document.createElement('video')
+      preview.muted = true
+      preview.preload = 'auto'
+      preview.src = video.currentSrc || src
+      preview.addEventListener('seeked', () => {
+        try {
+          thumb.getContext('2d').drawImage(preview, 0, 0, thumb.width, thumb.height)
+          thumb.hidden = false
+        } catch { /* a frame that will not draw: time only */ }
+        // The pointer moved on while that one was found: fetch the latest.
+        if (previewWanted !== null && Math.abs(previewWanted - preview.currentTime) > 1) {
+          const next = previewWanted
+          previewWanted = null
+          preview.currentTime = next
+        } else previewWanted = null
+      })
+    }
+    if (preview.seeking) previewWanted = time
+    else preview.currentTime = time
+  }
+  thumb.hidden = true
+  tip.append(thumb, tipTime)
   const showTip = ratio => {
     if (!Number.isFinite(video.duration)) return
     tip.hidden = false
     tip.style.left = `${ratio * 100}%`
-    tip.textContent = clock(ratio * video.duration)
+    tipTime.textContent = clock(ratio * video.duration)
+    previewAt(ratio * video.duration)
   }
   let scrubbing = false
   seek.addEventListener('pointerdown', event => {
@@ -783,6 +821,7 @@ export default async function player ({ params, query, container }) {
     async destroy () {
       tracker?.flush()
       clearInterval(sleep.tick)
+      if (preview) { preview.removeAttribute('src'); preview.load() }
       state.destroyed = true
       clearInterval(state.statsTimer)
       clearInterval(state.saveTimer)

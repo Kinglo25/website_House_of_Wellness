@@ -349,7 +349,10 @@ remembered and chosen by itself next time, and **Aa** beside it sets their size
 
 On a phone it behaves like the Netflix app: a tap shows or hides the controls, a double
 tap on the left or right of the picture jumps ten seconds, and the bar under the picture
-can be dragged with a finger, showing the time it will land on. On a TV, any button on the
+can be dragged with a finger, showing the time it will land on — and, for a direct
+stream or a torrent already fully downloaded, the frame there too, as Netflix and
+Jellyfin show it. (A torrent still downloading shows only the time, so scrubbing never
+pulls pieces from the network ahead of what is playing.) On a TV, any button on the
 remote brings the controls back, and they stay while paused. Holding OK on a *Continue
 watching* tile brings up its ✕, as holding it on a Netflix tile brings up its options.
 
