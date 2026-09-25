@@ -859,3 +859,9 @@ html.tv .skip-intro { bottom: 170px; right: 48px; font-size: 22px; padding: 16px
 .seek .seek-tip canvas { width: 192px; height: 108px; border-radius: 6px; background: #000; border: 2px solid rgba(255,255,255,0.8); }
 .seek .seek-tip canvas[hidden] { display: none; }
 @media (max-width: 700px) { .seek .seek-tip canvas { width: 144px; height: 81px; } }
+
+/* The player is the most-thumbed screen of all: 44px controls on a touch screen. */
+@media (pointer: coarse) {
+  .player-wrap .btn.icon { min-width: 44px; min-height: 44px; }
+  .player-wrap select.field, .player-wrap .btn.small { min-height: 40px; }
+}
