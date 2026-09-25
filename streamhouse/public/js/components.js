@@ -35,13 +35,19 @@ export function metaCard (meta, { progress = 0, ribbon = '', sub = '', open = ''
     button.disabled = true
     if (await onRemove() === false) return (button.disabled = false)
     const strip = card.parentElement
+    const neighbour = card.nextElementSibling || card.previousElementSibling
     card.remove()
+    // On a TV the remote needs somewhere to be: the tile beside it.
+    if (document.documentElement.classList.contains('tv')) neighbour?.focus({ preventScroll: true })
     // The last tile gone: a row with nothing in it goes too.
     if (strip && !strip.children.length) strip.closest('.shelf')?.setAttribute('hidden', '')
   })
   card.addEventListener('click', go)
   card.addEventListener('keydown', event => {
     if (event.target !== card) return
+    // A TV remote's OK is handled in tv.js, on release, so holding it can arm
+    // the tile's × instead.
+    if (document.documentElement.classList.contains('tv')) return
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       go()

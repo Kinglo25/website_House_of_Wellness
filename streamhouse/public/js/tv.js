@@ -49,7 +49,11 @@ function visible (el) {
 function candidates () {
   // A modal owns the focus while it is open.
   const scope = document.querySelector('.modal-backdrop') || document.querySelector('.player-wrap') || document
-  return [...scope.querySelectorAll(FOCUSABLE)].filter(visible)
+  // A tile's × is not a stop on the way along a row — only on a tile armed by
+  // holding OK, see below. Otherwise every other press would land on one.
+  return [...scope.querySelectorAll(FOCUSABLE)]
+    .filter(el => !el.matches('.card .remove') || el.closest('.card.armed'))
+    .filter(visible)
 }
 
 function centre (el) {
@@ -83,6 +87,9 @@ function nearest (from, direction) {
       ? origin.rect.bottom > target.rect.top + 4 && origin.rect.top < target.rect.bottom - 4
       : origin.rect.right > target.rect.left + 4 && origin.rect.left < target.rect.right - 4
 
+    // Left and right stay in the row, as on Android TV: at the end of a row
+    // nothing happens, rather than a jump to whatever sits diagonally.
+    if (!overlaps && (direction === 'ArrowLeft' || direction === 'ArrowRight') && from.closest('.strip, .grid')) continue
     const score = along + across * (overlaps ? 0.1 : 3)
     if (score < bestScore) {
       bestScore = score
@@ -93,7 +100,10 @@ function nearest (from, direction) {
 }
 
 export function focusFirst () {
-  const first = candidates().find(el => !el.closest('nav.rail')) || candidates()[0]
+  // The page itself first — the billboard's Play, a title's big button — not
+  // the search box above it.
+  const all = candidates()
+  const first = all.find(el => el.closest('#view')) || all.find(el => !el.closest('nav.rail')) || all[0]
   first?.focus({ preventScroll: true })
   if (first) scrollIntoView(first)
 }
@@ -125,9 +135,22 @@ function onKeyDown (event) {
   }
 
   if (key === 'Enter' && document.activeElement && document.activeElement !== document.body) {
-    if (document.activeElement.matches('input, textarea, select')) return
+    const active = document.activeElement
+    if (active.matches('input, textarea, select')) return
     event.preventDefault()
-    document.activeElement.click()
+    // Held down, OK repeats: one press is one click, never a burst of them.
+    if (event.repeat) {
+      // Held on a tile that can be removed: arm it, as holding OK on a
+      // Netflix tile brings up its options. Its × takes the focus.
+      if (active.matches('.card') && active.querySelector('.remove') && !active.classList.contains('armed')) {
+        pendingClick = null
+        active.classList.add('armed')
+        active.querySelector('.remove').focus({ preventScroll: true })
+      }
+      return
+    }
+    // Acted on when released, so a hold can become the arm above instead.
+    pendingClick = active
     return
   }
 
@@ -155,9 +178,31 @@ function onKeyDown (event) {
   scrollIntoView(next)
 }
 
+let pendingClick = null
+
+function onKeyUp (event) {
+  if (!document.documentElement.classList.contains('tv') || event.key !== 'Enter') return
+  const target = pendingClick
+  pendingClick = null
+  if (target && target === document.activeElement) target.click()
+}
+
 export function initTvMode () {
   if (isTvDevice()) document.documentElement.classList.add('tv')
   window.addEventListener('keydown', onKeyDown, true)
+  window.addEventListener('keyup', onKeyUp, true)
+  // Moving off an armed tile puts its × away again.
+  document.addEventListener('focusin', event => {
+    for (const card of document.querySelectorAll('.card.armed')) {
+      if (!card.contains(event.target)) card.classList.remove('armed')
+    }
+  })
+  // The first page, too, starts with something focused.
+  setTimeout(() => {
+    if (!document.documentElement.classList.contains('tv')) return
+    const active = document.activeElement
+    if (!active || active === document.body) focusFirst()
+  }, 800)
 
   // Every route change lands focus somewhere sensible, or the remote has
   // nothing to move from.

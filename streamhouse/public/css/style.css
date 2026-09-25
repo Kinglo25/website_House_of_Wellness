@@ -620,7 +620,10 @@ html.tv .device { padding: 20px; }
 }
 .card:hover .remove, .card:focus-within .remove, .card .remove:focus-visible { opacity: 1; }
 @media (hover: none) { .card .remove { opacity: 1; } }
-html.tv .card .remove { opacity: 1; width: 38px; height: 38px; font-size: 17px; }
+/* On a TV the × stays out of the way until OK is held on the tile. */
+html.tv .card .remove { opacity: 0; width: 44px; height: 44px; font-size: 19px; }
+html.tv .card.armed .remove { opacity: 1; }
+html.tv .card.armed .poster { outline: 3px solid var(--red); }
 
 /* Episodes: the one picked, the ones not out yet, and how far into one you are */
 .stream.episode.active { border-color: rgba(123,91,245,.6); background: rgba(123,91,245,.08); }

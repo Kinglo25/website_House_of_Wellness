@@ -324,7 +324,8 @@ remembered and chosen by itself next time, and **Aa** beside it sets their size
 On a phone it behaves like the Netflix app: a tap shows or hides the controls, a double
 tap on the left or right of the picture jumps ten seconds, and the bar under the picture
 can be dragged with a finger, showing the time it will land on. On a TV, any button on the
-remote brings the controls back, and they stay while paused.
+remote brings the controls back, and they stay while paused. Holding OK on a *Continue
+watching* tile brings up its ✕, as holding it on a Netflix tile brings up its options.
 
 Playback position is remembered every ten seconds and whenever you leave the player, and
 shows up under *Continue watching* on the home page and in the library. A tile there goes
