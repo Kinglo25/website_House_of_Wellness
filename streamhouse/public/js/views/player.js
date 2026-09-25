@@ -2,6 +2,9 @@ import { api } from '../api.js'
 import { h, esc, clock, toast, bytes } from '../util.js'
 import { castPicker } from '../cast.js'
 
+// Netflix's presets, plus the 2× people ask it for.
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
 // Full-screen video player. Torrent playback streams from the local engine
 // over HTTP byte ranges, so seeking works while the file is still downloading.
 export default async function player ({ params, query, container }) {
@@ -52,6 +55,9 @@ export default async function player ({ params, query, container }) {
         <span class="time"><span id="pl-cur">0:00</span> / <span id="pl-dur">0:00</span></span>
         <span class="grow"></span>
         <span class="tiny muted" id="pl-net"></span>
+        <select class="field" id="pl-speed" style="width:auto" title="Playback speed (&lt; and &gt;)">
+          ${SPEEDS.map(rate => `<option value="${rate}" ${rate === 1 ? 'selected' : ''}>${rate === 1 ? 'Normal speed' : `${rate}×`}</option>`).join('')}
+        </select>
         <select class="field" id="pl-subs" style="width:auto;display:none"></select>
         <button class="btn ghost icon" data-act="mute">🔊</button>
         <input class="vol" type="range" min="0" max="1" step="0.05" value="1">
@@ -285,8 +291,8 @@ export default async function player ({ params, query, container }) {
     if (!duration && !time) return
     try {
       // Watched to the end with no duration to compare against: the server
-      // drops finished titles by ratio, so say so directly instead.
-      if (finished && !duration) return await api.clearProgress(progressKey)
+      // judges the end by ratio, so say so directly instead.
+      if (finished && !duration) return await api.setWatched({ id: progressKey, watched: true, meta: progressMeta(progressKey) })
       await api.saveProgress({
         id: progressKey,
         time: finished ? duration : time,
@@ -326,9 +332,13 @@ export default async function player ({ params, query, container }) {
       select.style.display = ''
       select.innerHTML = '<option value="">Subtitles: off</option>' +
         subs.slice(0, 40).map((sub, index) => `<option value="${index}">${esc(sub.lang || sub.id || `Track ${index + 1}`)}</option>`).join('')
-      select.addEventListener('change', () => {
+      // The language picked last time comes on by itself, as Stremio's default
+      // subtitle language does; "off" is remembered too.
+      // The "off" option's value is "", and Number("") is 0 — the first track.
+      const chosen = () => select.value === '' ? null : subs[Number(select.value)]
+      const show = () => {
         ;[...video.querySelectorAll('track')].forEach(track => track.remove())
-        const sub = subs[Number(select.value)]
+        const sub = chosen()
         if (!sub) return
         const track = document.createElement('track')
         track.kind = 'subtitles'
@@ -338,7 +348,19 @@ export default async function player ({ params, query, container }) {
         track.default = true
         video.append(track)
         video.textTracks[video.textTracks.length - 1].mode = 'showing'
+      }
+      select.addEventListener('change', () => {
+        const sub = chosen()
+        try { localStorage.setItem('sh-sub-lang', sub ? (sub.lang || '') : 'off') } catch { /* not remembered */ }
+        show()
       })
+      let preferred = ''
+      try { preferred = localStorage.getItem('sh-sub-lang') || '' } catch { /* nothing remembered */ }
+      const match = preferred && preferred !== 'off' ? subs.slice(0, 40).findIndex(sub => sub.lang === preferred) : -1
+      if (match >= 0) {
+        select.value = String(match)
+        show()
+      }
     }).catch(() => { /* no subtitle add-on installed */ })
   }
 
@@ -365,6 +387,15 @@ export default async function player ({ params, query, container }) {
       else root.requestFullscreen?.()
     }
   })
+
+  const speed = overlayBottom.querySelector('#pl-speed')
+  const setSpeed = rate => {
+    video.playbackRate = rate
+    speed.value = String(rate)
+  }
+  speed.addEventListener('change', () => setSpeed(Number(speed.value)))
+  // A new source resets the rate; keep the one chosen.
+  video.addEventListener('loadedmetadata', () => { video.playbackRate = Number(speed.value) || 1 })
 
   overlayBottom.querySelector('.vol').addEventListener('input', event => {
     video.volume = Number(event.target.value)
@@ -426,6 +457,14 @@ export default async function player ({ params, query, container }) {
       }
       case 'f': document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen?.(); break
       case 'm': video.muted = !video.muted; break
+      case '<': case '>': {
+        const at = SPEEDS.indexOf(video.playbackRate)
+        const step = event.key === '>' ? 1 : -1
+        const rate = SPEEDS[Math.min(SPEEDS.length - 1, Math.max(0, (at < 0 ? SPEEDS.indexOf(1) : at) + step))]
+        setSpeed(rate)
+        toast(rate === 1 ? 'Normal speed' : `${rate}× speed`)
+        break
+      }
       case 'Escape': if (!document.fullscreenElement) history.back(); break
     }
   }

@@ -9,6 +9,8 @@ import { rankStreams, scoreRelease } from '../server/rank.js'
 import { candidatePaths, playableUrl, isLoopback, vlcArgs, positionFrom } from '../server/vlc.js'
 import { fingerprint, localChanges, remoteWins } from '../server/merge.js'
 import { byteRange } from '../server/mime.js'
+import { recordPosition, setWatched, hide } from '../server/watching.js'
+import { inProgress, upNextCandidates, upNext, episodeLabel } from '../public/js/watching.js'
 
 let passed = 0
 let failed = 0
@@ -284,6 +286,83 @@ console.log('\nAccount sync: who wins')
   const removed = { kind: 'progress', key: 'tt1', value: null, updatedAt: 2500 }
   ok('a deletion from elsewhere removes an untouched item', remoteWins({ remote: removed, local: older.value, agreed: fingerprint(older.value), stamp }))
   ok('but not one this device has watched further since', !remoteWins({ remote: removed, local: newer.value, agreed: fingerprint(older.value), stamp }))
+}
+
+console.log('\nWatched, and how far')
+{
+  const all = {}
+  const film = { type: 'movie', imdbId: 'tt9' }
+  eq('part-way through is kept with its place', recordPosition(all, { id: 'tt9', time: 600, duration: 6000, meta: film }, 1)?.time, 600)
+  ok('and is not yet watched', !all.tt9.watched)
+  const done = recordPosition(all, { id: 'tt9', time: 5900, duration: 6000 }, 2)
+  ok('the credits count as the end: watched, place reset', done.watched === true && done.time === 0, JSON.stringify(done))
+  eq('the title it was saved with is kept', all.tt9.meta?.imdbId, 'tt9')
+  recordPosition(all, { id: 'tt9', time: 120, duration: 6000 }, 3)
+  ok('watching it again keeps the tick', all.tt9.watched === true && all.tt9.time === 120)
+  recordPosition(all, { id: 'tt9', time: 0, duration: 6000 }, 4)
+  ok('back at the start, still watched', all.tt9?.watched === true)
+  recordPosition(all, { id: 'new', time: 0, duration: 100 }, 5)
+  ok('a position of nothing for something never watched stores nothing', !('new' in all))
+
+  setWatched(all, { id: 'ep1', watched: true, meta: { type: 'series', imdbId: 'tt1' } }, 6)
+  ok('marked watched by hand', all.ep1.watched === true && all.ep1.time === 0)
+  setWatched(all, { id: 'ep1', watched: false }, 7)
+  ok('and unmarked, gone again', !('ep1' in all))
+  recordPosition(all, { id: 'ep2', time: 300, duration: 1200 }, 8)
+  setWatched(all, { id: 'ep2', watched: true }, 9)
+  setWatched(all, { id: 'ep2', watched: false }, 10)
+  ok('unmarking something never finished leaves nothing to resume', !('ep2' in all))
+
+  recordPosition(all, { id: 'ep3', time: 300, duration: 1200 }, 11)
+  hide(all, 'ep3', 12)
+  ok('removing a part-watched episode from the row forgets it', !('ep3' in all))
+  recordPosition(all, { id: 'tt9', time: 120, duration: 6000 }, 13)
+  hide(all, 'tt9', 14)
+  ok('removing a rewatch keeps the tick, drops the place', all.tt9.watched === true && all.tt9.time === 0)
+  hide(all, 'tt9', 15)
+  ok('removing a finished one stops it offering what is next', all.tt9.hidden === true && all.tt9.watched === true)
+  recordPosition(all, { id: 'tt9', time: 5990, duration: 6000 }, 16)
+  ok('finishing it again brings it back', !all.tt9.hidden)
+}
+
+console.log('\nWhat to watch next')
+{
+  const day = 864e5
+  const now = Date.parse('2026-06-01T00:00:00Z')
+  const ep = (season, episode, released = '2026-01-01T00:00:00Z') => ({ id: `tt1:${season}:${episode}`, season, episode, released })
+  const videos = [ep(1, 2), ep(0, 1), ep(1, 1), ep(2, 1), ep(2, 2, '2026-07-01T00:00:00Z'), ep(1, 3)]
+  const series = { type: 'series', imdbId: 'tt1' }
+  const at = (id, entry) => ({ [id]: { id, meta: series, duration: 1200, ...entry } })
+
+  eq('nothing watched: the first episode, not a special', upNext(videos, {}, now)?.video.id, 'tt1:1:1')
+  eq('…and it says so', upNext(videos, {}, now)?.action, 'start')
+  const part = upNext(videos, at('tt1:1:2', { time: 400, updatedAt: 5 }), now)
+  ok('part-way through: carry on with that episode', part.action === 'resume' && part.video.id === 'tt1:1:2')
+  const next = upNext(videos, at('tt1:1:3', { time: 0, watched: true, updatedAt: 5 }), now)
+  ok('finished the season: the next season opens', next.action === 'next' && next.video.id === 'tt1:2:1', JSON.stringify(next))
+  const mixed = { ...at('tt1:2:1', { time: 0, watched: true, updatedAt: 3 }), ...at('tt1:1:1', { time: 0, watched: true, updatedAt: 9 }) }
+  eq('it goes on from the one watched last, not the furthest', upNext(videos, mixed, now)?.video.id, 'tt1:1:2')
+  const waiting = upNext(videos, at('tt1:2:1', { time: 0, watched: true, updatedAt: 5 }), now)
+  ok('the next one has not aired: it says so', waiting.action === 'upcoming' && waiting.video.id === 'tt1:2:2', JSON.stringify(waiting))
+  const all = upNext(videos, at('tt1:2:2', { time: 0, watched: true, updatedAt: 5 }), now + 60 * day)
+  ok('everything out is watched: start again', all.action === 'again' && all.video.id === 'tt1:1:1')
+  eq('nothing aired yet: nothing to offer', upNext([ep(1, 1, '2027-01-01T00:00:00Z')], {}, now), null)
+  eq('labelled as Netflix does', episodeLabel(ep(2, 5)), 'S2:E5')
+
+  const progress = {
+    a: { id: 'a', time: 100, updatedAt: 1, meta: series },
+    b: { id: 'b', time: 200, updatedAt: 3, meta: series },
+    film: { id: 'film', time: 50, updatedAt: 2, meta: { type: 'movie', imdbId: 'tt5' } },
+    done: { id: 'done', time: 0, watched: true, updatedAt: 4, meta: { type: 'movie', imdbId: 'tt6' } }
+  }
+  eq('continue watching is one tile per show, newest first', inProgress(progress).map(entry => entry.id).join(','), 'b,film')
+  const shows = {
+    x1: { id: 'x1', time: 0, watched: true, updatedAt: 5, meta: { type: 'series', imdbId: 'x' } },
+    y1: { id: 'y1', time: 0, watched: true, updatedAt: 2, meta: { type: 'series', imdbId: 'y' } },
+    y2: { id: 'y2', time: 30, updatedAt: 3, meta: { type: 'series', imdbId: 'y' } },
+    z1: { id: 'z1', time: 0, watched: true, hidden: true, updatedAt: 4, meta: { type: 'series', imdbId: 'z' } }
+  }
+  eq('up next: shows whose latest episode was finished, not hidden', upNextCandidates(shows).map(entry => entry.id).join(','), 'x1')
 }
 
 /* -------------------------------------------------------------------- done */

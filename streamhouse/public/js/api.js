@@ -64,6 +64,8 @@ export const api = {
   progress: () => request('/api/progress'),
   saveProgress: body => request('/api/progress', { method: 'POST', body }),
   clearProgress: id => request(`/api/progress/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  hideProgress: id => request(`/api/progress/${encodeURIComponent(id)}/hide`, { method: 'POST' }),
+  setWatched: body => request('/api/watched', { method: 'POST', body }),
 
   torrents: () => request('/api/torrents'),
   addTorrent: body => request('/api/torrents', { method: 'POST', body }),

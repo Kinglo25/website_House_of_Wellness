@@ -1,6 +1,7 @@
 import { api } from '../api.js'
 import { h, bytes, esc } from '../util.js'
-import { metaCard, continueCard, shelf, skeletonStrip, emptyState, errorBox } from '../components.js'
+import { metaCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox } from '../components.js'
+import { inProgress, upNextCandidates, upNext } from '../watching.js'
 
 // Home. Continue watching, whatever is downloading right now, then the first
 // page of every catalogue the installed add-ons expose.
@@ -65,17 +66,40 @@ export default async function board ({ container }) {
   }
 }
 
+// Part-way through, one tile per show; then, as Netflix and Stremio do, the
+// episode after one just finished. Finding that needs the show's episode list,
+// so those tiles arrive a moment later and slot in by when they were watched.
 async function renderContinueWatching (root) {
-  let entries = []
+  let all = {}
   try {
-    entries = Object.values(await api.progress())
+    all = await api.progress()
   } catch { return }
-  if (!entries.length) return
+  const entries = inProgress(all).slice(0, 20)
+  const candidates = upNextCandidates(all).slice(0, 8)
+  if (!entries.length && !candidates.length) return
 
-  entries.sort((a, b) => b.updatedAt - a.updatedAt)
   const node = shelf({ title: 'Continue watching', moreHref: '#/library' })
-  entries.slice(0, 20).forEach(entry => node.strip.append(continueCard(entry)))
+  const place = (card, updatedAt) => {
+    card.dataset.at = String(updatedAt || 0)
+    const later = [...node.strip.children].find(other => Number(other.dataset.at) < (updatedAt || 0))
+    node.strip.insertBefore(card, later || null)
+    node.hidden = false
+  }
+  entries.forEach(entry => place(continueCard(entry, { onRemove: () => api.hideProgress(entry.id) }), entry.updatedAt))
+  node.hidden = !entries.length
   root.append(node)
+
+  // Not awaited: the catalogues below must not wait on these.
+  candidates.forEach(async entry => {
+    const { type, imdbId } = entry.meta
+    let series
+    try {
+      series = await api.meta(type, imdbId)
+    } catch { return }
+    const next = upNext(series?.videos || [], all)
+    if (next?.action !== 'next') return
+    place(upNextCard({ ...series, type, id: imdbId }, next.video, { onRemove: () => api.hideProgress(entry.id) }), entry.updatedAt)
+  })
 }
 
 async function renderActiveDownloads (root) {

@@ -6,6 +6,7 @@ import { addons, clearAddonCache } from '../addons.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { rankStreams, PROFILES } from '../rank.js'
 import { library, progress } from '../history.js'
+import { recordPosition, setWatched, hide } from '../watching.js'
 import { mimeFor, isBrowserPlayable, srtToVtt, byteRange } from '../mime.js'
 import { localAddresses, lanUrl, isLanReachable } from '../network.js'
 import * as cast from '../cast.js'
@@ -148,20 +149,36 @@ router.get('/progress', wrap(async (req, res) => {
 }))
 
 // Shared by the browser player, which posts here, and VLC, whose position the
-// server reads back itself.
+// server reads back itself. The rules are in watching.js.
 function recordProgress ({ id, time, duration, meta }) {
   const all = progress.get()
-  const finished = duration > 0 && time / duration > 0.93
-  if (finished) delete all[id]
-  else all[id] = { id, time: Number(time) || 0, duration: Number(duration) || 0, meta: meta || all[id]?.meta, updatedAt: Date.now() }
+  const entry = recordPosition(all, { id, time, duration, meta })
   progress.set(all)
-  return all[id] || { id, cleared: true }
+  return entry || { id, cleared: true }
 }
 
 router.post('/progress', (req, res) => {
   const { id, time, duration, meta } = req.body || {}
   if (!id) return res.status(400).json({ error: 'id is required' })
   res.json(recordProgress({ id, time, duration, meta }))
+})
+
+// The tick on an episode, by hand: "Mark as watched" and its undo.
+router.post('/watched', (req, res) => {
+  const { id, watched, meta } = req.body || {}
+  if (!id) return res.status(400).json({ error: 'id is required' })
+  const all = progress.get()
+  const entry = setWatched(all, { id, watched: Boolean(watched), meta })
+  progress.set(all)
+  res.json(entry || { id, cleared: true })
+})
+
+// "Remove from row" on continue watching and up next.
+router.post('/progress/:id/hide', (req, res) => {
+  const all = progress.get()
+  const entry = hide(all, req.params.id)
+  progress.set(all)
+  res.json(entry || { id: req.params.id, cleared: true })
 })
 
 router.delete('/progress/:id', (req, res) => {

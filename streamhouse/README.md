@@ -316,14 +316,33 @@ is fine and plays anywhere else.
 
 The player streams over HTTP byte ranges from the local engine, so seeking works while
 the file is still downloading. Keyboard: `space`/`k` play-pause, `←`/`→` 5s, `↑`/`↓`
-volume, `f` fullscreen, `m` mute, `esc` back.
+volume, `<`/`>` speed (0.5× to 2×), `f` fullscreen, `m` mute, `esc` back. The subtitle
+language you pick — or *off* — is remembered and chosen by itself next time.
 
 Playback position is remembered every ten seconds and whenever you leave the player, and
 shows up under *Continue watching* on the home page and in the library. A tile there goes
 straight back into the file it was playing, at the second it stopped — not to the title
 page. If the stream it came from has since gone (a cached stream cleaned up, a source that
 dried up), the player offers **Pick another stream**: choose a new one and it carries on
-from the same position. Titles watched to the end drop off the list by themselves.
+from the same position. Titles watched to the end drop off the list by themselves, and
+the × on a tile takes it off by hand.
+
+### Where you are in a series
+
+StreamHouse remembers what you have finished, the way Netflix and Stremio do, not only
+where you stopped:
+
+- A series page opens on the season and episode you are up to, with that episode's
+  streams already listed. The big button says what it will do: **Resume S1:E3 · 12 min
+  left**, **Play S1:E4**, **S2:E1 airs 3 Oct** when you are caught up, or **Watch again**.
+- Episodes carry a ✓ once watched and a bar while part-way through; ones not out yet
+  show their air date. **Mark watched** sets or clears the tick by hand.
+- *Continue watching* has one tile per show, and after you finish an episode an
+  **Up next** tile offers the one after it.
+
+Watched episodes travel with your account like everything else: they are kept in the
+same progress list, so the account server needs no change. A device still running an
+older StreamHouse shows finished titles on its *Continue watching* until it is updated.
 
 ### Sound, and VLC
 
