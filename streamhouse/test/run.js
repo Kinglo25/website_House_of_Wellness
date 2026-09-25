@@ -9,6 +9,7 @@ import { rankStreams, scoreRelease } from '../server/rank.js'
 import { candidatePaths, playableUrl, isLoopback, vlcArgs, positionFrom } from '../server/vlc.js'
 import { fingerprint, localChanges, remoteWins } from '../server/merge.js'
 import { byteRange } from '../server/mime.js'
+import { explainInstallError } from '../server/addon-errors.js'
 import { introSpan, inIntro, skipTracker } from '../public/js/intro.js'
 import { MAIN, scopeKey, splitKey, progressOf, libraryOf, normalise, viewerOf } from '../server/viewers.js'
 import { recordPosition, setWatched, hide } from '../server/watching.js'
@@ -471,6 +472,18 @@ console.log('\nSkip intro, learned from skipping')
   const leaving = tracker()
   leaving.seek(40, 120); leaving.flush()
   eq('leaving the player keeps a skip just made', JSON.stringify(learned.pop()), '{"start":40,"end":120}')
+}
+
+console.log('\nInstalling an add-on: what went wrong, in words')
+{
+  const says = (err, pattern) => pattern.test(explainInstallError(err))
+  ok('a typo is not a web address', says(new TypeError('Failed to parse URL from https://not a url/manifest.json'), /not a web address/))
+  ok('a web page is not an add-on', says(new SyntaxError('Unexpected token \'<\', "<!doctype "... is not valid JSON'), /web page, not an add-on/))
+  ok('a 404 is nothing at that address', says(new Error('HTTP 404 for https://x/manifest.json'), /Nothing is at that address/))
+  ok('another status is the server\'s error', says(new Error('HTTP 503 for https://x'), /server answered with an error \(503\)/))
+  ok('no answer in time', says(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }), /did not answer in time/))
+  ok('an unreachable host', says(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } }), /Could not reach/))
+  ok('none of them repeat the raw message', !/Unexpected token|parse URL/.test(explainInstallError(new SyntaxError('Unexpected token <'))))
 }
 
 /* -------------------------------------------------------------------- done */

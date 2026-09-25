@@ -39,7 +39,8 @@ export function scopedKey (key) {
 export const viewerStorageKey = name => (current === MAIN ? name : `${name}:${current}`)
 
 export function avatar (viewer, size = '') {
-  const initial = (viewer?.name || '?').trim().charAt(0).toUpperCase() || '?'
+  // The first character, not the first half of one: an emoji is two code units.
+  const initial = (Array.from((viewer?.name || '?').trim())[0] || '?').toUpperCase()
   return `<span class="avatar ${size}" style="background:${esc(viewer?.colour || '#7b5bf5')}" aria-hidden="true">${esc(initial)}</span>`
 }
 

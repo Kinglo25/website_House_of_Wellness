@@ -892,3 +892,8 @@ html.tv .strip-nav { display: none; }
 
 /* Breathing room between the billboard and the first row */
 .billboard-slot:not(:empty) { margin-bottom: 26px; }
+
+/* A long profile name keeps to its tile: every face the same width */
+.who-pick { width: 150px; }
+.who-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.tv .who-pick { width: 210px; }
