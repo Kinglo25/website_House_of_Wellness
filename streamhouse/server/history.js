@@ -40,3 +40,8 @@ export const viewers = {
   }
 }
 
+
+// Where each show's intro is, learned from people skipping it: { [series id]:
+// { start, end, learnedAt } } in seconds. Per household, not per profile — the
+// intro is the show's, not the viewer's.
+export const markers = new JsonStore('markers', {})

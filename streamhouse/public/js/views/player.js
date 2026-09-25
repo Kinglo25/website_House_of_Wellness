@@ -2,6 +2,7 @@ import { api } from '../api.js'
 import { h, esc, clock, toast, bytes } from '../util.js'
 import { castPicker } from '../cast.js'
 import { scopedKey, viewerStorageKey } from '../viewers.js'
+import { inIntro, skipTracker } from '../intro.js'
 
 // What the keyboard does in the player, for the ? overlay.
 const SHORTCUTS = [
@@ -242,7 +243,7 @@ export default async function player ({ params, query, container }) {
         if (saved && saved.time > 30 && saved.time < (video.duration || Infinity) - 60) start = saved.time
       } catch { /* no saved position */ }
     }
-    if (start) video.currentTime = start
+    if (start) jump(start)
     video.play().catch(() => {
       // Autoplay can be blocked; the play button still works.
       hideBusy()
@@ -292,6 +293,47 @@ export default async function player ({ params, query, container }) {
       const end = video.buffered.end(video.buffered.length - 1)
       overlayBottom.querySelector('.buffered').style.width = `${(end / (video.duration || 1)) * 100}%`
     }
+  })
+
+  /* ------------------------------------------------------------ skip intro */
+
+  // Learned per show from people skipping its opening by hand: see intro.js.
+  // Every seek goes through the video's own seeking event, whichever control
+  // made it; the player's own jumps (resuming, Skip intro itself) say so first.
+  const series = meta.type === 'series' && meta.imdbId ? String(meta.imdbId) : null
+  let intro = null
+  let quiet = false
+  let lastPos = 0
+  function jump (time) {
+    quiet = true
+    video.currentTime = time
+  }
+  const skipButton = h('<button class="btn skip-intro" hidden>Skip intro ⏭</button>')
+  root.append(skipButton)
+  skipButton.addEventListener('click', () => {
+    if (intro) jump(intro.end)
+    skipButton.hidden = true
+  })
+  const tracker = series
+    ? skipTracker(span => {
+      intro = span
+      api.learnIntro(series, span).catch(() => { /* learning is best-effort */ })
+    })
+    : null
+  if (series) api.intro(series).then(marker => { intro = marker }).catch(() => {})
+  video.addEventListener('seeking', () => {
+    const to = video.currentTime
+    if (quiet) quiet = false
+    else tracker?.seek(lastPos, to)
+    lastPos = to
+  })
+  video.addEventListener('timeupdate', () => {
+    if (!video.seeking) lastPos = video.currentTime
+    const show = inIntro(intro, video.currentTime)
+    if (show === !skipButton.hidden) return
+    skipButton.hidden = !show
+    // On a TV the remote lands on it, as it does on Netflix's.
+    if (show && document.documentElement.classList.contains('tv')) skipButton.focus({ preventScroll: true })
   })
 
   video.addEventListener('ended', async () => {
@@ -670,6 +712,7 @@ export default async function player ({ params, query, container }) {
 
   return {
     async destroy () {
+      tracker?.flush()
       state.destroyed = true
       clearInterval(state.statsTimer)
       clearInterval(state.saveTimer)

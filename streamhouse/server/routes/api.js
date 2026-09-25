@@ -5,7 +5,7 @@ import { config } from '../config.js'
 import { addons, clearAddonCache } from '../addons.js'
 import { engine, infoHashOf } from '../torrent.js'
 import { rankStreams, PROFILES } from '../rank.js'
-import { library, progress, viewers } from '../history.js'
+import { library, progress, viewers, markers } from '../history.js'
 import { MAIN, scopeKey, splitKey, progressOf, libraryOf, viewerOf } from '../viewers.js'
 import { recordPosition, setWatched, hide } from '../watching.js'
 import { mimeFor, isBrowserPlayable, srtToVtt, byteRange } from '../mime.js'
@@ -240,6 +240,35 @@ router.delete('/progress/:id', (req, res) => {
   delete all[storedKey(who(req), req.params.id)]
   progress.set(all)
   res.json({ removed: req.params.id })
+})
+
+/* ------------------------------------------------------------------ intros */
+
+// Skip Intro, learned rather than detected: the player reports where someone
+// skipped the opening of an episode by hand, and every episode of that show
+// offers the same jump. Plex and Jellyfin find the span by analysing audio;
+// StreamHouse only ever sees what people do.
+router.get('/intro/:series', (req, res) => res.json(markers.get()[req.params.series] || null))
+
+router.post('/intro/:series', (req, res) => {
+  const start = Number(req.body?.start)
+  const end = Number(req.body?.end)
+  // An intro starts in the first few minutes and lasts from a few seconds to
+  // a few minutes; anything else is someone skipping a scene.
+  if (!(start >= 0 && start < 480 && end - start >= 10 && end - start <= 300)) {
+    return res.status(400).json({ error: 'That does not look like an intro' })
+  }
+  const all = markers.get()
+  all[req.params.series] = { start: Math.round(start), end: Math.round(end), learnedAt: Date.now() }
+  markers.set(all)
+  res.json(all[req.params.series])
+})
+
+router.delete('/intro/:series', (req, res) => {
+  const all = markers.get()
+  delete all[req.params.series]
+  markers.set(all)
+  res.json({ removed: req.params.series })
 })
 
 /* ----------------------------------------------------------------- account */

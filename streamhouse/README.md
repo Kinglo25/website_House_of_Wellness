@@ -361,6 +361,16 @@ dried up), the player offers **Pick another stream**: choose a new one and it ca
 from the same position. Titles watched to the end drop off the list by themselves, and
 the × on a tile takes it off by hand.
 
+### Skip intro
+
+Netflix, Plex and Jellyfin offer **Skip intro**; Plex and Jellyfin find the intro by
+analysing each file's audio, which StreamHouse cannot do for a stream it never holds
+whole. It learns from you instead: the first time you skip over a show's opening by
+hand — the +30 button, the seek bar, holding → on the remote — it remembers that span,
+and every other episode of the show offers **Skip intro** there, focused on a TV so one
+press of OK does it. Several quick skips count as one; a jump you take back teaches
+nothing. Skip a different span and that one is learned instead.
+
 ### Where you are in a series
 
 StreamHouse remembers what you have finished, the way Netflix and Stremio do, not only

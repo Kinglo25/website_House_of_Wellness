@@ -9,6 +9,7 @@ import { rankStreams, scoreRelease } from '../server/rank.js'
 import { candidatePaths, playableUrl, isLoopback, vlcArgs, positionFrom } from '../server/vlc.js'
 import { fingerprint, localChanges, remoteWins } from '../server/merge.js'
 import { byteRange } from '../server/mime.js'
+import { introSpan, inIntro, skipTracker } from '../public/js/intro.js'
 import { MAIN, scopeKey, splitKey, progressOf, libraryOf, normalise, viewerOf } from '../server/viewers.js'
 import { recordPosition, setWatched, hide } from '../server/watching.js'
 import { inProgress, upNextCandidates, upNext, episodeLabel, sortLibrary, followedShows, episodeCalendar } from '../public/js/watching.js'
@@ -431,6 +432,45 @@ console.log('\nProfiles: whose is what')
   eq('a request names its profile', viewerOf(request('kid'), list), 'kid')
   eq('one naming a profile that is gone gets the main one', viewerOf(request('gone'), list), MAIN)
   eq('as does one naming none', viewerOf(request(undefined), list), MAIN)
+}
+
+console.log('\nSkip intro, learned from skipping')
+{
+  eq('a jump over the opening is an intro', JSON.stringify(introSpan(62.4, 151.9)), '{"start":62,"end":151}')
+  eq('not one that starts twenty minutes in', introSpan(1200, 1290), null)
+  eq('not a five-second nudge', introSpan(60, 65), null)
+  eq('not a jump to the end of the film', introSpan(30, 5400), null)
+  ok('the button shows during the intro', inIntro({ start: 60, end: 150 }, 61) && inIntro({ start: 60, end: 150 }, 140))
+  ok('and not before it or at its very end', !inIntro({ start: 60, end: 150 }, 40) && !inIntro({ start: 60, end: 150 }, 148))
+
+  // a clock and a scheduler the test drives
+  let clock = 0
+  const jobs = []
+  const learned = []
+  const tracker = () => skipTracker(span => learned.push(span), {
+    now: () => clock,
+    schedule: (fn, ms) => { const job = { fn, at: clock + ms }; jobs.push(job); return job },
+    cancel: job => { const i = jobs.indexOf(job); if (i >= 0) jobs.splice(i, 1) }
+  })
+  const run = () => { for (const job of jobs.splice(0).filter(job => job.at <= clock)) job.fn() }
+
+  const plusThirty = tracker()
+  plusThirty.seek(70, 100); clock += 800; plusThirty.seek(100, 130); clock += 700; plusThirty.seek(130, 160)
+  clock += 3500; run()
+  eq('three presses of +30 are one skip', JSON.stringify(learned.pop()), '{"start":70,"end":160}')
+
+  const overshot = tracker()
+  overshot.seek(70, 400); clock += 1000; overshot.seek(400, 150)
+  clock += 3500; run()
+  eq('a jump taken back teaches nothing', learned.length, 0)
+
+  const apart = tracker()
+  apart.seek(70, 78); clock += 5000; run(); apart.seek(78, 86); clock += 3500; run()
+  eq('skips far apart in time are not joined', learned.length, 0)
+
+  const leaving = tracker()
+  leaving.seek(40, 120); leaving.flush()
+  eq('leaving the player keeps a skip just made', JSON.stringify(learned.pop()), '{"start":40,"end":120}')
 }
 
 /* -------------------------------------------------------------------- done */

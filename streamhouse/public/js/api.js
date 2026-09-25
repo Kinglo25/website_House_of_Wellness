@@ -41,6 +41,10 @@ export const api = {
   saveConfig: patch => request('/api/config', { method: 'POST', body: patch }),
   profiles: () => request('/api/profiles'),
 
+  intro: series => request(`/api/intro/${encodeURIComponent(series)}`),
+  learnIntro: (series, body) => request(`/api/intro/${encodeURIComponent(series)}`, { method: 'POST', body }),
+  forgetIntro: series => request(`/api/intro/${encodeURIComponent(series)}`, { method: 'DELETE' }),
+
   viewers: () => request('/api/viewers'),
   addViewer: body => request('/api/viewers', { method: 'POST', body }),
   updateViewer: (id, body) => request(`/api/viewers/${encodeURIComponent(id)}`, { method: 'POST', body }),

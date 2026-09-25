@@ -833,3 +833,13 @@ html.tv .dl span, html.tv .muted, html.tv .card .sub, html.tv .stream .badge, ht
    the remote's reach, so it is not shown. */
 html.tv .shelf-head a { display: none; }
 html.tv .card .ribbon { padding: 4px 9px; }
+
+/* Skip intro: over the picture, whether or not the controls are showing */
+.skip-intro {
+  position: absolute; right: 28px; bottom: 120px; z-index: 4;
+  background: rgba(14,15,26,0.88); border: 1px solid rgba(255,255,255,0.35);
+  font-size: 16px; padding: 12px 22px;
+}
+.skip-intro:hover, .skip-intro:focus-visible { background: #fff; color: #000; }
+html.tv .skip-intro { bottom: 170px; right: 48px; font-size: 22px; padding: 16px 30px; }
+@media (max-width: 700px) { .skip-intro { right: 14px; bottom: 150px; } }
