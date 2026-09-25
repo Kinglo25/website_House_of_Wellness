@@ -343,9 +343,16 @@ where you stopped:
   streams already listed. The big button says what it will do: **Resume S1:E3 · 12 min
   left**, **Play S1:E4**, **S2:E1 airs 3 Oct** when you are caught up, or **Watch again**.
 - Episodes carry a ✓ once watched and a bar while part-way through; ones not out yet
-  show their air date. **Mark watched** sets or clears the tick by hand.
+  show their air date. **Mark watched** sets or clears the tick by hand, and **Mark
+  season watched** does a whole season — a finished season's tab gets a ✓ too.
 - *Continue watching* has one tile per show, and after you finish an episode an
   **Up next** tile offers the one after it.
+
+The **Library** keeps a calendar of the shows you have saved or watched, as Stremio's
+does: *New episodes* out in the last fortnight that you have not seen, and what is
+*Coming up* in the next month. Saved titles can be narrowed to films or series and
+sorted by when they were added, when they were last watched, A–Z or release year; the
+choice is remembered. Search results come in the same two groups.
 
 Watched episodes travel with your account like everything else: they are kept in the
 same progress list, so the account server needs no change. A device still running an

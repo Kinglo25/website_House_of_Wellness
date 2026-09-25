@@ -164,13 +164,16 @@ router.post('/progress', (req, res) => {
 })
 
 // The tick on an episode, by hand: "Mark as watched" and its undo.
+// `items` marks a whole season at once, in one write: [{ id, meta }, ...].
 router.post('/watched', (req, res) => {
-  const { id, watched, meta } = req.body || {}
-  if (!id) return res.status(400).json({ error: 'id is required' })
+  const { id, watched, meta, items } = req.body || {}
+  const list = Array.isArray(items) ? items : [{ id, meta }]
+  if (!list.length || list.some(item => !item?.id)) return res.status(400).json({ error: 'id is required' })
+  if (list.length > 500) return res.status(413).json({ error: 'At most 500 at once' })
   const all = progress.get()
-  const entry = setWatched(all, { id, watched: Boolean(watched), meta })
+  const results = list.map(item => setWatched(all, { id: String(item.id), watched: Boolean(watched), meta: item.meta }) || { id: String(item.id), cleared: true })
   progress.set(all)
-  res.json(entry || { id, cleared: true })
+  res.json(Array.isArray(items) ? results : results[0])
 })
 
 // "Remove from row" on continue watching and up next.

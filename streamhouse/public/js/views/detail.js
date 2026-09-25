@@ -282,23 +282,8 @@ function renderEpisodes (meta, state, progress, onPick, onWatched) {
         const button = event.currentTarget
         button.disabled = true
         try {
-          const result = await api.setWatched({
-            id: video.id,
-            watched: !watched,
-            meta: {
-              title: `${meta.name} S${video.season}E${video.episode}`,
-              name: `${meta.name} S${video.season}E${video.episode}`,
-              poster: meta.poster,
-              type: 'series',
-              id: meta.imdb_id || meta.id,
-              imdbId: meta.imdb_id || meta.id,
-              videoId: video.id,
-              season: video.season,
-              episode: video.episode
-            }
-          })
-          if (result.cleared) delete progress[video.id]
-          else progress[video.id] = result
+          record(await api.setWatched({ id: video.id, watched: !watched, meta: episodeMeta(video) }))
+          drawSeasons()
           drawEpisodes()
           onWatched()
         } catch (err) {
@@ -310,10 +295,31 @@ function renderEpisodes (meta, state, progress, onPick, onWatched) {
     })
   }
 
+  // What an episode's progress entry carries, so continue watching can name it.
+  function episodeMeta (video) {
+    return {
+      title: `${meta.name} S${video.season}E${video.episode}`,
+      name: `${meta.name} S${video.season}E${video.episode}`,
+      poster: meta.poster,
+      type: 'series',
+      id: meta.imdb_id || meta.id,
+      imdbId: meta.imdb_id || meta.id,
+      videoId: video.id,
+      season: video.season,
+      episode: video.episode
+    }
+  }
+  function record (result) {
+    if (result.cleared) delete progress[result.id]
+    else progress[result.id] = result
+  }
+  const airedIn = season => videos.filter(video => video.season === season && isReleased(video))
+  const seasonDone = season => airedIn(season).length > 0 && airedIn(season).every(video => progress[video.id]?.watched)
+
   function drawSeasons () {
     seasonRow.innerHTML = ''
     seasons.forEach(season => {
-      const chip = h(`<button class="chip ${season === state.season ? 'active' : ''}">${season === 0 ? 'Specials' : `Season ${season}`}</button>`)
+      const chip = h(`<button class="chip ${season === state.season ? 'active' : ''}">${seasonDone(season) ? '✓ ' : ''}${season === 0 ? 'Specials' : `Season ${season}`}</button>`)
       chip.addEventListener('click', () => {
         state.season = season
         drawSeasons()
@@ -321,6 +327,27 @@ function renderEpisodes (meta, state, progress, onPick, onWatched) {
       })
       seasonRow.append(chip)
     })
+    // Stremio's "mark season as watched", and its undo once it is.
+    const done = seasonDone(state.season)
+    if (!airedIn(state.season).length) return
+    const toggle = h(`<button class="btn small ghost season-mark">${done ? 'Mark season unwatched' : 'Mark season watched'}</button>`)
+    toggle.addEventListener('click', async () => {
+      toggle.disabled = true
+      try {
+        const results = await api.setWatched({
+          watched: !done,
+          items: airedIn(state.season).map(video => ({ id: video.id, meta: episodeMeta(video) }))
+        })
+        results.forEach(record)
+        drawSeasons()
+        drawEpisodes()
+        onWatched()
+      } catch (err) {
+        toast(err.message, 'err')
+        toggle.disabled = false
+      }
+    })
+    seasonRow.append(toggle)
   }
 
   function select (video, { load = true } = {}) {

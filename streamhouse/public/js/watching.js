@@ -74,7 +74,8 @@ export function upNext (videos, all, now = Date.now()) {
   let latest = null
   for (const video of order) {
     const entry = all?.[video.id]
-    if (entry && (!latest || (entry.updatedAt || 0) > (latest.entry.updatedAt || 0))) latest = { video, entry }
+    // On a tie — a season marked at once — the one furthest along wins.
+    if (entry && (!latest || (entry.updatedAt || 0) >= (latest.entry.updatedAt || 0))) latest = { video, entry }
   }
   if (!latest) return { action: 'start', video: released[0] }
   if (latest.entry.time > 0) return { action: 'resume', video: latest.video, entry: latest.entry }
@@ -87,4 +88,76 @@ export function upNext (videos, all, now = Date.now()) {
 // "S1:E4", the way Netflix labels an episode on its buttons.
 export function episodeLabel (video) {
   return video && video.season != null && video.episode != null ? `S${video.season}:E${video.episode}` : ''
+}
+
+/* ---------------------------------------------------------------- library */
+
+// When anything of this title was last watched: the film itself, or any
+// episode of the show.
+export function lastWatched (item, all) {
+  let latest = 0
+  for (const entry of Object.values(all || {})) {
+    if (entry?.id === item.id || entry?.meta?.imdbId === item.id) latest = Math.max(latest, entry.updatedAt || 0)
+  }
+  return latest
+}
+
+export const LIBRARY_SORTS = {
+  added: 'Recently added',
+  watched: 'Recently watched',
+  name: 'A–Z',
+  year: 'Newest release'
+}
+
+// The saved list, filtered to a type ('' for all) and ordered, as Stremio's
+// library is. Never-watched titles go after watched ones, newest added first.
+export function sortLibrary (items, all, { sort = 'added', type = '' } = {}) {
+  const year = item => parseInt(String(item.releaseInfo || item.year || '').slice(0, 4), 10) || 0
+  const byAdded = (a, b) => (b.addedAt || 0) - (a.addedAt || 0)
+  const compare = {
+    added: byAdded,
+    watched: (a, b) => (lastWatched(b, all) - lastWatched(a, all)) || byAdded(a, b),
+    name: (a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base', numeric: true }),
+    year: (a, b) => (year(b) - year(a)) || byAdded(a, b)
+  }[sort] || byAdded
+  return items.filter(item => !type || item.type === type).slice().sort(compare)
+}
+
+/* --------------------------------------------------------------- calendar */
+
+const DAY = 864e5
+
+// The shows worth checking for new episodes: saved series, and any series
+// watched from, newest activity first. [{ id, type }]
+export function followedShows (library, all) {
+  const shows = new Map()
+  for (const item of library || []) {
+    if (item.type === 'series') shows.set(item.id, { id: item.id, type: 'series', at: item.addedAt || 0 })
+  }
+  for (const entry of Object.values(all || {})) {
+    const series = seriesOf(entry)
+    if (!series) continue
+    const at = Math.max(shows.get(series)?.at || 0, entry.updatedAt || 0)
+    shows.set(series, { id: series, type: 'series', at })
+  }
+  return [...shows.values()].sort((a, b) => b.at - a.at).map(({ id, type }) => ({ id, type }))
+}
+
+// Stremio's calendar, in two lists: episodes out in the last `recentDays` and
+// not yet watched, newest first; and those airing in the next `aheadDays`,
+// soonest first. `shows` is [{ meta, videos }].
+export function episodeCalendar (shows, all, { now = Date.now(), recentDays = 14, aheadDays = 30 } = {}) {
+  const fresh = []
+  const upcoming = []
+  for (const { meta, videos } of shows) {
+    for (const video of episodeOrder(videos)) {
+      const at = Date.parse(video.released)
+      if (Number.isNaN(at)) continue
+      if (at <= now && at > now - recentDays * DAY && !all?.[video.id]?.watched) fresh.push({ meta, video, at })
+      else if (at > now && at <= now + aheadDays * DAY) upcoming.push({ meta, video, at })
+    }
+  }
+  fresh.sort((a, b) => b.at - a.at)
+  upcoming.sort((a, b) => a.at - b.at)
+  return { fresh, upcoming }
 }

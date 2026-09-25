@@ -10,7 +10,7 @@ import { candidatePaths, playableUrl, isLoopback, vlcArgs, positionFrom } from '
 import { fingerprint, localChanges, remoteWins } from '../server/merge.js'
 import { byteRange } from '../server/mime.js'
 import { recordPosition, setWatched, hide } from '../server/watching.js'
-import { inProgress, upNextCandidates, upNext, episodeLabel } from '../public/js/watching.js'
+import { inProgress, upNextCandidates, upNext, episodeLabel, sortLibrary, followedShows, episodeCalendar } from '../public/js/watching.js'
 
 let passed = 0
 let failed = 0
@@ -347,6 +347,8 @@ console.log('\nWhat to watch next')
   const all = upNext(videos, at('tt1:2:2', { time: 0, watched: true, updatedAt: 5 }), now + 60 * day)
   ok('everything out is watched: start again', all.action === 'again' && all.video.id === 'tt1:1:1')
   eq('nothing aired yet: nothing to offer', upNext([ep(1, 1, '2027-01-01T00:00:00Z')], {}, now), null)
+  const season = { ...at('tt1:1:1', { time: 0, watched: true, updatedAt: 7 }), ...at('tt1:1:2', { time: 0, watched: true, updatedAt: 7 }), ...at('tt1:1:3', { time: 0, watched: true, updatedAt: 7 }) }
+  eq('a season marked at once goes on to the next season', upNext(videos, season, now)?.video.id, 'tt1:2:1')
   eq('labelled as Netflix does', episodeLabel(ep(2, 5)), 'S2:E5')
 
   const progress = {
@@ -363,6 +365,41 @@ console.log('\nWhat to watch next')
     z1: { id: 'z1', time: 0, watched: true, hidden: true, updatedAt: 4, meta: { type: 'series', imdbId: 'z' } }
   }
   eq('up next: shows whose latest episode was finished, not hidden', upNextCandidates(shows).map(entry => entry.id).join(','), 'x1')
+}
+
+console.log('\nThe library, sorted and filtered')
+{
+  const items = [
+    { id: 'a', type: 'movie', name: 'alpha', releaseInfo: '1999', addedAt: 3 },
+    { id: 'b', type: 'series', name: 'Bravo', releaseInfo: '2015–2019', addedAt: 1 },
+    { id: 'c', type: 'movie', name: 'Charlie 10', releaseInfo: '2021', addedAt: 2 },
+    { id: 'd', type: 'movie', name: 'Charlie 9', addedAt: 4 }
+  ]
+  const progress = {
+    'b:1:2': { id: 'b:1:2', updatedAt: 50, meta: { type: 'series', imdbId: 'b' } },
+    c: { id: 'c', updatedAt: 20, meta: { type: 'movie', imdbId: 'c' } }
+  }
+  const order = (options) => sortLibrary(items, progress, options).map(item => item.id).join('')
+  eq('recently added first', order({ sort: 'added' }), 'dacb')
+  eq('recently watched, a show by its latest episode, the unwatched after', order({ sort: 'watched' }), 'bcda')
+  eq('A–Z ignores case and counts numbers as numbers', order({ sort: 'name' }), 'abdc')
+  eq('newest release first, undated last', order({ sort: 'year' }), 'cbad')
+  eq('films only', order({ type: 'movie' }), 'dac')
+}
+
+console.log('\nNew and upcoming episodes')
+{
+  const day = 864e5
+  const now = Date.parse('2026-06-15T12:00:00Z')
+  const iso = offset => new Date(now + offset * day).toISOString()
+  const show = (id, days) => ({ meta: { id, name: id }, videos: days.map((offset, i) => ({ id: `${id}:1:${i + 1}`, season: 1, episode: i + 1, released: iso(offset) })) })
+  const shows = [show('a', [-40, -10, -2, 5]), show('b', [-1, 20, 45]), show('c', [])]
+  const { fresh, upcoming } = episodeCalendar(shows, { 'a:1:3': { id: 'a:1:3', watched: true } }, { now })
+  eq('out lately and not watched, newest first', fresh.map(item => item.video.id).join(','), 'b:1:1,a:1:2')
+  eq('coming up within a month, soonest first', upcoming.map(item => item.video.id).join(','), 'a:1:4,b:1:2')
+  const library = [{ id: 'x', type: 'series', addedAt: 5 }, { id: 'm', type: 'movie', addedAt: 9 }]
+  const watching = { e: { id: 'y:1:1', updatedAt: 7, meta: { type: 'series', imdbId: 'y' } } }
+  eq('shows to check: saved series and ones watched, not films', followedShows(library, watching).map(item => item.id).join(','), 'y,x')
 }
 
 /* -------------------------------------------------------------------- done */
