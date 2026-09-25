@@ -1,6 +1,6 @@
 import { api } from '../api.js'
 import { h, bytes, esc } from '../util.js'
-import { metaCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox } from '../components.js'
+import { metaCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox, detailHref } from '../components.js'
 import { inProgress, upNextCandidates, upNext } from '../watching.js'
 
 // Home. Continue watching, whatever is downloading right now, then the first
@@ -9,8 +9,12 @@ export default async function board ({ container }) {
   container.innerHTML = '<div class="pad" id="board"></div>'
   const root = container.querySelector('#board')
 
-  root.append(h('<h1>Home</h1>'))
-  root.append(h('<p class="muted" style="margin-top:0">Everything your add-ons are offering right now.</p>'))
+  // Netflix's billboard: one title from the first catalogue, a different one
+  // each day, filled in once that catalogue answers. Until then — or if it
+  // never does — the page keeps its plain heading.
+  const billboardSlot = h('<div class="billboard-slot"></div>')
+  const heading = h('<div><h1>Home</h1><p class="muted" style="margin-top:0">Everything your add-ons are offering right now.</p></div>')
+  root.append(billboardSlot, heading)
 
   // What is already on this machine comes first, and never waits on the
   // add-ons: a slow or broken catalogue used to take the whole page down with
@@ -58,6 +62,7 @@ export default async function board ({ container }) {
     api.catalog({ addon: catalog.addonId, type: catalog.type, id: catalog.id })
       .then(metas => {
         if (!metas.length) return node.remove()
+        if (!billboardSlot.childElementCount) fillBillboard(billboardSlot, heading, metas, catalog)
         const strip = h('<div class="strip"></div>')
         metas.slice(0, 24).forEach(meta => strip.append(metaCard(meta)))
         placeholderStrip.replaceWith(strip)
@@ -123,4 +128,33 @@ async function renderActiveDownloads (root) {
     ))
   })
   root.append(node)
+}
+
+async function fillBillboard (slot, heading, metas, catalog) {
+  const candidates = metas.filter(meta => meta.poster || meta.background).slice(0, 10)
+  if (!candidates.length) return
+  const day = Math.floor(Date.now() / 864e5)
+  let meta = { type: catalog.type, ...candidates[day % candidates.length] }
+  // Catalogue entries are often brief; the title's own record has the rest.
+  if (!meta.description || !meta.background) {
+    try { meta = { ...meta, ...(await api.meta(meta.type, meta.id)) } } catch { /* the brief one will do */ }
+  }
+  if (slot.childElementCount) return
+  const href = detailHref(meta)
+  const art = meta.background || meta.poster
+  const node = h(`
+    <section class="billboard" style="background-image:url('${esc(art)}')">
+      <div class="info">
+        <span class="eyebrow">${esc(catalog.name)}</span>
+        <h1>${esc(meta.name)}</h1>
+        <div class="facts">${[meta.imdbRating ? `<span class="rating">★ ${esc(meta.imdbRating)}</span>` : '', ...[meta.releaseInfo || meta.year, meta.runtime, meta.genres?.slice(0, 3).join(', ')].filter(Boolean).map(fact => `<span>${esc(fact)}</span>`)].filter(Boolean).join('<span>·</span>')}</div>
+        ${meta.description ? `<p class="desc">${esc(meta.description)}</p>` : ''}
+        <div class="cta">
+          <a class="btn primary" href="${esc(href)}?play=1">▶ Play</a>
+          <a class="btn" href="${esc(href)}">ⓘ More info</a>
+        </div>
+      </div>
+    </section>`)
+  slot.append(node)
+  heading.hidden = true
 }

@@ -10,7 +10,7 @@ import { upNext, episodeOrder, isReleased, episodeLabel } from '../watching.js'
 // Like Netflix and Stremio, it knows where you are: a series opens on the
 // episode you are up to, and the big button says what it will do — resume,
 // play the next one, or when the next one airs.
-export default async function detail ({ params, container }) {
+export default async function detail ({ params, query = {}, container }) {
   const { type, id } = params
   container.innerHTML = '<div id="detail"></div>'
   const root = container.querySelector('#detail')
@@ -76,6 +76,14 @@ export default async function detail ({ params, container }) {
 
   body.append(streamsSection)
   await loadStreams()
+
+  // Arrived from the home billboard's Play: start what the big button offers.
+  // The hint comes off the address first, or coming back from the player
+  // would start it all over again.
+  if (query.play === '1') {
+    history.replaceState(null, '', `#/detail/${encodeURIComponent(type)}/${encodeURIComponent(id)}`)
+    if (!primary.disabled && location.hash.startsWith('#/detail/')) heroNode.querySelector('[data-act="play"]').click()
+  }
 
   if (Array.isArray(meta.videos) && !meta.videos.length && meta.trailers?.length) {
     body.append(h('<p class="muted tiny">This title has trailers only.</p>'))
