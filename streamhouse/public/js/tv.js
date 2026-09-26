@@ -56,6 +56,27 @@ function candidates () {
     .filter(visible)
 }
 
+// Where an element sits on the page, in terms that survive the page being
+// drawn again: which row and which tile in it, or else its place in the list.
+function addressOf (el) {
+  const view = document.getElementById('view')
+  if (!view?.contains(el)) return null
+  const shelf = el.closest('.shelf')
+  if (shelf && el.matches('.card')) {
+    return { shelf: [...view.querySelectorAll('.shelf')].indexOf(shelf), card: [...shelf.querySelectorAll('.card')].indexOf(el) }
+  }
+  return { index: [...view.querySelectorAll(FOCUSABLE)].indexOf(el) }
+}
+
+function elementAt (address) {
+  const view = document.getElementById('view')
+  const el = address.shelf != null
+    ? view.querySelectorAll('.shelf')[address.shelf]?.querySelectorAll('.card')[address.card]
+    : view.querySelectorAll(FOCUSABLE)[address.index]
+  // A row still showing its placeholders has tiles that cannot take focus yet.
+  return el && el.matches(FOCUSABLE) && visible(el) ? el : null
+}
+
 function centre (el) {
   const rect = el.getBoundingClientRect()
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, rect }
@@ -244,12 +265,30 @@ export function initTvMode () {
 
   // Every route change lands focus somewhere sensible, or the remote has
   // nothing to move from.
+  // Back to a page puts the remote on the tile it left from, as Netflix does,
+  // not on the first thing on the page.
   window.addEventListener('hashchange', () => {
     if (!document.documentElement.classList.contains('tv')) return
-    setTimeout(() => {
+    const left = history.state?.focus
+    const started = Date.now()
+    const land = () => {
       const active = document.activeElement
-      if (!active || active === document.body || !visible(active)) focusFirst()
-    }, 250)
+      if (active && active !== document.body && visible(active)) return
+      const target = left && elementAt(left)
+      if (target) {
+        target.focus({ preventScroll: true })
+        return target.scrollIntoView({ block: 'nearest', inline: 'center' })
+      }
+      // Rows fill in after the page does: wait a little for that tile to exist.
+      if (left && Date.now() - started < 3000) return setTimeout(land, 150)
+      focusFirst()
+    }
+    setTimeout(land, 250)
+  })
+  document.addEventListener('focusin', event => {
+    if (!document.documentElement.classList.contains('tv')) return
+    const focus = addressOf(event.target)
+    if (focus) history.replaceState({ ...history.state, focus }, '')
   })
 
   // Media keys on the remote, when a TV browser forwards them.
