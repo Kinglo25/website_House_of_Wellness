@@ -249,7 +249,8 @@ class AddonManager {
     if (search) extra.search = search
     const url = resourceUrl(addon.transportUrl, 'catalog', type, id, extra)
     const json = await getJson(url)
-    return (json?.metas || []).map(meta => ({ ...meta, addonId: addon.manifest.id }))
+    // Some add-ons leave each entry's type out; it is the catalogue's.
+    return (json?.metas || []).map(meta => ({ type, ...meta, addonId: addon.manifest.id }))
   }
 
   // Ask every add-on that claims to know about this id, first answer wins.

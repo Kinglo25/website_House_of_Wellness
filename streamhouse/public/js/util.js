@@ -96,6 +96,16 @@ export function debounce (fn, wait = 300) {
   }
 }
 
+// What the app suggests (Home and Discover) is only films and series rated
+// above this on IMDb; unrated ones are left out too. Channels and TV have no
+// rating, so they are never filtered. Search still finds everything.
+export const MIN_RATING = 6.5
+export const RATED_TYPES = ['movie', 'series']
+
+export function wellRated (meta) {
+  return !RATED_TYPES.includes(meta?.type) || Number(meta.imdbRating) > MIN_RATING
+}
+
 // Posters from add-ons occasionally 404; fall back to a generated tile so the
 // grid never shows a broken image icon.
 export function posterUrl (meta) {
