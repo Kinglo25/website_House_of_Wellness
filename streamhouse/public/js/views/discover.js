@@ -1,22 +1,13 @@
 import { api } from '../api.js'
-import { h, esc, toast } from '../util.js'
+import { h, esc, toast, wellRated, MIN_RATING, RATED_TYPES } from '../util.js'
 import { metaCard, emptyState, errorBox } from '../components.js'
 
 const TYPE_LABELS = { movie: 'Films', series: 'Series', channel: 'Channels', tv: 'TV' }
-
-// Films and series are rated on IMDb; only the well-rated ones are shown.
-// Channels and TV have no rating, so they are left alone.
-const MIN_RATING = 6.5
-const RATED_TYPES = ['movie', 'series']
 
 // A filtered page can come back nearly empty, so keep fetching until this
 // many tiles were added, or the catalogue runs out.
 const MIN_BATCH = 24
 const MAX_FETCHES = 6
-
-function wellRated (meta) {
-  return !RATED_TYPES.includes(meta.type) || Number(meta.imdbRating) > MIN_RATING
-}
 
 // Browse one catalogue at a time with genre filtering and infinite scroll.
 export default async function discover ({ query, container }) {

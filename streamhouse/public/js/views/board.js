@@ -1,5 +1,5 @@
 import { api } from '../api.js'
-import { h, bytes, esc } from '../util.js'
+import { h, bytes, esc, wellRated } from '../util.js'
 import { metaCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox, detailHref, seeAllCard, withShowDetails } from '../components.js'
 import { continueRow, seriesOf, upNext } from '../watching.js'
 
@@ -61,6 +61,7 @@ export default async function board ({ container }) {
 
     api.catalog({ addon: catalog.addonId, type: catalog.type, id: catalog.id })
       .then(metas => {
+        metas = metas.filter(wellRated)
         if (!metas.length) return node.remove()
         if (!billboardSlot.childElementCount) fillBillboard(billboardSlot, heading, metas, catalog)
         const strip = h('<div class="strip"></div>')
