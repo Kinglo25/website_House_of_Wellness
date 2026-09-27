@@ -4,7 +4,19 @@ import { metaCard, emptyState, errorBox } from '../components.js'
 
 const TYPE_LABELS = { movie: 'Films', series: 'Series', channel: 'Channels', tv: 'TV' }
 
-const PAGE_SIZE = 100
+// Films and series are rated on IMDb; only the well-rated ones are shown.
+// Channels and TV have no rating, so they are left alone.
+const MIN_RATING = 6.5
+const RATED_TYPES = ['movie', 'series']
+
+// A filtered page can come back nearly empty, so keep fetching until this
+// many tiles were added, or the catalogue runs out.
+const MIN_BATCH = 24
+const MAX_FETCHES = 6
+
+function wellRated (meta) {
+  return !RATED_TYPES.includes(meta.type) || Number(meta.imdbRating) > MIN_RATING
+}
 
 // Browse one catalogue at a time with genre filtering and infinite scroll.
 export default async function discover ({ query, container }) {
@@ -34,7 +46,8 @@ export default async function discover ({ query, container }) {
     genre: query.genre || '',
     skip: 0,
     done: false,
-    loading: false
+    loading: false,
+    generation: 0
   }
 
   const filters = h('<div style="display:flex;flex-direction:column;gap:12px;margin:18px 0 22px"></div>')
@@ -106,33 +119,50 @@ export default async function discover ({ query, container }) {
   async function loadPage () {
     if (state.loading || state.done) return
     state.loading = true
+    const generation = state.generation
     try {
-      const metas = await api.catalog({
-        addon: state.addonId,
-        type: state.type,
-        id: state.id,
-        genre: state.genre,
-        skip: state.skip
-      })
-      if (!metas.length) {
-        state.done = true
-        if (!grid.children.length) {
-          grid.append(h('<p class="muted">This catalogue returned nothing.</p>'))
+      let added = 0
+      for (let fetches = 0; fetches < MAX_FETCHES && added < MIN_BATCH; fetches++) {
+        const metas = await api.catalog({
+          addon: state.addonId,
+          type: state.type,
+          id: state.id,
+          genre: state.genre,
+          skip: state.skip
+        })
+        if (generation !== state.generation) return
+        // Page sizes vary between add-ons, so only an empty page means the end.
+        if (!metas.length) {
+          state.done = true
+          break
         }
-        return
+        state.skip += metas.length
+        const kept = metas.filter(wellRated)
+        kept.forEach(meta => grid.append(metaCard(meta)))
+        added += kept.length
       }
-      metas.forEach(meta => grid.append(metaCard(meta)))
-      state.skip += metas.length
-      if (metas.length < PAGE_SIZE) state.done = true
+      if (state.done && !grid.children.length) {
+        grid.append(h(`<p class="muted">${RATED_TYPES.includes(state.type) ? `Nothing here rated above ${MIN_RATING} on IMDb.` : 'This catalogue returned nothing.'}</p>`))
+      }
     } catch (err) {
+      if (generation !== state.generation) return
       state.done = true
       toast(err.message, 'err')
     } finally {
-      state.loading = false
+      if (generation === state.generation) {
+        state.loading = false
+        // Re-arm the observer: if the sentinel is still on screen it fires again.
+        if (!state.done) {
+          observer.unobserve(sentinel)
+          observer.observe(sentinel)
+        }
+      }
     }
   }
 
   function reload () {
+    state.generation++
+    state.loading = false
     state.skip = 0
     state.done = false
     grid.innerHTML = ''
