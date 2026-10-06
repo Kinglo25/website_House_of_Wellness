@@ -335,12 +335,14 @@ router.get('/torrents/:id/location', (req, res) => {
 async function serveFile (req, res, next) {
   const { id } = req.params
   const fileIdx = req.params.fileIdx !== undefined ? Number(req.params.fileIdx) : null
-  let file
+  let file, torrent
   try {
-    ({ file } = await engine.file(id, fileIdx))
+    ({ file, torrent } = await engine.file(id, fileIdx))
   } catch (err) {
     return next(err)
   }
+  // Kept on the device for as long as this request reads it, however long the film.
+  if (req.method !== 'HEAD') res.on('close', engine.reading(torrent.infoHash))
 
   const total = file.length
   const range = req.headers.range

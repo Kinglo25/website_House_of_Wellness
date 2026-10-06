@@ -96,20 +96,40 @@ class TorrentEngine {
     this.client = null
     this.started = false
     this.playing = new Map() // infoHash -> last playback timestamp
+    this.streams = new Map() // infoHash -> how many players are reading it now
+    // record id -> the torrent added for it. A magnet learns its own info-hash
+    // a moment after it is added; until then only this finds it.
+    this.attached = new Map()
+    this.lastError = null
+    this.failures = 0
   }
 
   start () {
-    if (this.started) return this
+    // WebTorrent destroys the whole client when its DHT fails, and every
+    // torrent with it. The next thing that needs the engine starts a new one.
+    if (this.started && !this.client?.destroyed) return this
+    if (this.client?.destroyed) {
+      // Not over and over, if the new one dies too: the error says why.
+      if (Date.now() - this.startedAt < 10000) return this
+      clearInterval(this._ticker)
+      this.failures++
+    }
     this.started = true
+    this.startedAt = Date.now()
     const settings = config.get()
 
     this.client = new WebTorrent({
       torrentPort: settings.torrentPort || 0,
       maxConns: settings.maxConns,
       downloadLimit: settings.downloadLimit,
-      uploadLimit: settings.uploadLimit
+      uploadLimit: settings.uploadLimit,
+      // The DHT took the last one down: trackers alone this time.
+      ...(this.failures ? { dht: false } : {})
     })
-    this.client.on('error', err => console.error('[torrent] client error:', err.message))
+    this.client.on('error', err => {
+      this.lastError = err.message
+      console.error('[torrent] client error:', err.message)
+    })
 
     // Restore whatever was in the list when the app was last closed. WebTorrent
     // re-verifies the pieces already on disk, so downloads resume where they
@@ -141,7 +161,10 @@ class TorrentEngine {
 
   torrent (id) {
     const hash = infoHashOf(id) || String(id).toLowerCase()
-    return this.client?.torrents.find(torrent => torrent.infoHash === hash) || null
+    const known = this.client?.torrents.find(torrent => torrent.infoHash === hash)
+    if (known) return known
+    const added = this.attached.get(hash)
+    return added && !added.destroyed && this.client?.torrents.includes(added) ? added : null
   }
 
   applyLimits () {
@@ -235,6 +258,7 @@ class TorrentEngine {
       deselect: true,
       announce: FALLBACK_TRACKERS
     })
+    this.attached.set(record.id, torrent)
 
     torrent.on('error', err => {
       record.status = 'error'
@@ -365,6 +389,7 @@ class TorrentEngine {
       fs.rmSync(target, { recursive: true, force: true })
     }
     fs.rmSync(cachePath(record.id), { force: true })
+    this.attached.delete(record.id)
     this.store.set(this.records().filter(entry => entry.id !== record.id))
     return { removed: record.id, deletedFiles: deleteFiles }
   }
@@ -406,6 +431,22 @@ class TorrentEngine {
     if (record.status === 'paused') record.status = 'downloading'
     this.store.save()
     return { torrent, file, record, fileIndex: torrent.files.indexOf(file) }
+  }
+
+  // A player reading the file right now. A TV player reads a whole film
+  // through one request, so the half-hour clean-up counts from when the last
+  // reader stops, not from when it started. Returns the call that ends it.
+  reading (infoHash) {
+    this.streams.set(infoHash, (this.streams.get(infoHash) || 0) + 1)
+    let open = true
+    return () => {
+      if (!open) return
+      open = false
+      const left = (this.streams.get(infoHash) || 1) - 1
+      if (left) this.streams.set(infoHash, left)
+      else this.streams.delete(infoHash)
+      this.playing.set(infoHash, Date.now())
+    }
   }
 
   stats (record) {
@@ -462,7 +503,10 @@ class TorrentEngine {
       active: client?.torrents.filter(torrent => !torrent.paused).length || 0,
       total: this.records().length,
       downloadLimit: config.get().downloadLimit,
-      uploadLimit: config.get().uploadLimit
+      uploadLimit: config.get().uploadLimit,
+      // What the player shows while a film will not start.
+      engineError: this.lastError,
+      dhtNodes: client?.dht ? client.dht.nodes.count() : null
     }
   }
 
@@ -481,7 +525,7 @@ class TorrentEngine {
         torrent.pause()
         record.status = 'done'
       }
-      if (settings.streamCacheOnly && record.mode === 'stream') {
+      if (settings.streamCacheOnly && record.mode === 'stream' && !this.streams.has(record.id)) {
         const lastPlayed = this.playing.get(record.id) || record.addedAt
         if (Date.now() - lastPlayed > 30 * 60 * 1000) this.remove(record.id, { deleteFiles: true })
       }

@@ -22,7 +22,18 @@
     <string name="cannot_reach">Could not reach %1$s.\n\nCheck the computer is awake and that “Allow other devices” is on in StreamHouse Settings.</string>
 
     <string name="nothing_to_play">Nothing to play</string>
-    <string name="playback_failed">This file would not play (%1$s)</string>
+    <string name="playback_failed">%1$s\n\nPress Back to pick another stream.\n(%2$s)</string>
+    <string name="failed_no_data">Nothing of this film arrived for three minutes: too few people are sharing this stream right now.</string>
+    <string name="failed_engine">StreamHouse could not open this file.</string>
+    <string name="failed_format">This device cannot read this kind of file.</string>
+    <string name="failed_decoding">This device cannot decode this film’s picture or sound. That is usual with 4K, HDR and 10-bit files: a 1080p stream will play.</string>
+    <string name="failed_other">This film would not play.</string>
+    <string name="status_no_peers">Looking for people sharing this film…</string>
+    <string name="status_error">The torrent engine says: %1$s</string>
+    <plurals name="status_downloading">
+        <item quantity="one">%1$s/s from %2$d peer · %3$d%% of the film here</item>
+        <item quantity="other">%1$s/s from %2$d peers · %3$d%% of the film here</item>
+    </plurals>
 
     <string name="cannot_open_link">Nothing on this device can open that link.</string>
 

@@ -4,6 +4,9 @@ import { esc } from './util.js'
 
 const routes = []
 let current = null
+// Counts renders, so a page that finishes opening after another has been asked
+// for — a player still waiting on a torrent when Back is pressed — is dropped.
+let rendering = 0
 
 export function route (pattern, view) {
   // "/detail/:type/:id" -> /^#?\/detail\/([^/]+)\/([^/]+)$/
@@ -28,6 +31,7 @@ export function currentPath () {
 }
 
 export async function render () {
+  const ticket = ++rendering
   const path = currentPath()
   const [pathname, queryString] = path.split('?')
   const query = Object.fromEntries(new URLSearchParams(queryString || ''))
@@ -43,10 +47,16 @@ export async function render () {
       params[name] = decodeURIComponent(match[index + 1])
     })
     if (current?.destroy) current.destroy()
+    current = null
     const container = document.getElementById('view')
     const saved = history.state?.scroll || 0
     container.scrollTop = 0
-    current = await entry.view({ params, query, container }) || null
+    const view = await entry.view({ params, query, container }) || null
+    if (ticket !== rendering) {
+      view?.destroy?.()
+      return
+    }
+    current = view
     highlight(pathname)
     if (saved) restoreScroll(container, saved)
     return

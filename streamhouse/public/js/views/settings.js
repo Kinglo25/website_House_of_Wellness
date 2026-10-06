@@ -316,6 +316,23 @@ export default async function settings ({ container, query = {} }) {
     grid.append(appPanel)
   }
 
+  // The app's own screen for this opens with the remote's Menu button, which
+  // many remotes do not have.
+  if (nativeApp?.changeServer) {
+    const wherePanel = h(`
+      <div class="setting">
+        <div class="label">
+          <b>Where StreamHouse runs</b>
+          <span class="tiny muted">${onDevice
+            ? 'On this device: it finds and streams films itself. A computer running StreamHouse can do that instead.'
+            : `On the computer at ${esc(location.host)}. This device can run StreamHouse itself instead.`}</span>
+        </div>
+        <div class="control"><button class="btn" id="app-where">Change</button></div>
+      </div>`)
+    wherePanel.querySelector('#app-where').addEventListener('click', () => nativeApp.changeServer())
+    grid.append(wherePanel)
+  }
+
   const castPanel = h(`
     <div class="setting">
       <div class="label">

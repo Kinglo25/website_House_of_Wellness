@@ -19,6 +19,17 @@ const SHORTCUTS = [
 // Netflix's presets, plus the 2× people ask it for.
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
+// What the engine is doing while a torrent connects, in words: a stream nobody
+// is sharing any more just waits, and that should be said, not spun at.
+function connecting (record, totals, waited) {
+  if (record?.error) return `The torrent engine says: ${record.error}`
+  const peers = record?.numPeers || 0
+  if (peers) return `Getting the film's details from ${peers} ${peers === 1 ? 'peer' : 'peers'}…`
+  if (waited < 20) return 'Connecting to peers…'
+  const engine = totals?.engineError ? ` The torrent engine says: ${totals.engineError}.` : ''
+  return `Nobody sharing this stream has answered in ${waited} seconds.${engine} Go back and pick another stream, ideally one with more seeders.`
+}
+
 // Full-screen video player. Torrent playback streams from the local engine
 // over HTTP byte ranges, so seeking works while the file is still downloading.
 export default async function player ({ params, query, container }) {
@@ -84,10 +95,38 @@ export default async function player ({ params, query, container }) {
     </div>`)
 
   const busy = h(`<div class="buffering"><div><div class="spinner"></div>
-    <div id="pl-busy">${params.kind === 'torrent' ? 'Connecting to peers…' : 'Loading…'}</div></div></div>`)
+    <div id="pl-busy" style="max-width:560px">${params.kind === 'torrent' ? 'Connecting to peers…' : 'Loading…'}</div></div></div>`)
   root.append(overlayTop, overlayBottom, busy)
 
-  const state = { id: null, fileIdx: null, statsTimer: null, saveTimer: null, idleTimer: null, destroyed: false }
+  const state = { id: null, fileIdx: null, statsTimer: null, saveTimer: null, idleTimer: null, connectTimer: null, destroyed: false }
+
+  // Back works while it is still connecting too: the page goes at once, and no
+  // player opens later, out of nowhere, when the torrent finally answers.
+  const here = location.hash
+  let left = false
+  const onLeave = () => {
+    if (location.hash === here) return
+    left = true
+    window.removeEventListener('hashchange', onLeave)
+    clearInterval(state.connectTimer)
+    root.remove()
+  }
+  window.addEventListener('hashchange', onLeave)
+  overlayTop.querySelector('[data-act="back"]').addEventListener('click', () => history.back())
+
+  // While it connects, what the engine is doing — peers found, or nobody
+  // answering — rather than one line that never changes.
+  if (kind === 'torrent') {
+    const since = Date.now()
+    state.connectTimer = setInterval(async () => {
+      try {
+        const { torrents, totals } = await api.torrents()
+        if (left || state.id) return
+        const record = torrents.find(torrent => torrent.id === params.id || torrent.infoHash === params.id)
+        root.querySelector('#pl-busy').textContent = connecting(record, totals, Math.round((Date.now() - since) / 1000))
+      } catch { /* the next tick tries again */ }
+    }, 1500)
+  }
   // Whether every byte is here: a torrent's preview frames are only fetched
   // then, so scrubbing never pulls pieces from the network ahead of playback.
   let wholeFile = kind !== 'torrent'
@@ -172,6 +211,8 @@ export default async function player ({ params, query, container }) {
   try {
     if (kind === 'torrent') {
       const info = await api.playback(params.id, query.fileIdx || undefined)
+      clearInterval(state.connectTimer)
+      if (left) return null
       state.id = info.id
       state.fileIdx = info.fileIdx
       src = info.streamUrl
@@ -199,6 +240,7 @@ export default async function player ({ params, query, container }) {
       // title, poster and stream down here — otherwise continue watching ends
       // up with an entry it can neither name nor resume.
       await seedProgress(key, start, saved)
+      if (left) return null
       // The native player reports back with nothing but this key, so it names
       // the profile too.
       nativeTv.play(new URL(src, location.origin).toString(), meta.title || 'StreamHouse', start, scopedKey(key))
@@ -209,6 +251,8 @@ export default async function player ({ params, query, container }) {
       video.src = src
     }
   } catch (err) {
+    clearInterval(state.connectTimer)
+    if (left) return null
     busy.innerHTML = `<div style="max-width:520px;text-align:center">
       <h2>Could not start playback</h2>
       <p class="muted">${esc(err.message)}</p>
@@ -678,7 +722,6 @@ export default async function player ({ params, query, container }) {
 
   overlayTop.addEventListener('click', async event => {
     const act = event.target.closest('[data-act]')?.dataset.act
-    if (act === 'back') history.back()
     if (act === 'external') {
       // VLC right here on the computer running StreamHouse; anywhere else, the
       // link for whatever player is to hand.
@@ -827,6 +870,7 @@ export default async function player ({ params, query, container }) {
       clearInterval(sleep.tick)
       if (preview) { preview.removeAttribute('src'); preview.load() }
       state.destroyed = true
+      window.removeEventListener('hashchange', onLeave)
       clearInterval(state.statsTimer)
       clearInterval(state.saveTimer)
       clearTimeout(state.idleTimer)
