@@ -35,6 +35,47 @@ Studio.
 
 The app appears on the Android TV home row, or in the phone's app drawer.
 
+## Updates
+
+That install is the only one by hand. The app looks at `tv-latest` whenever it
+comes to the front, at most every quarter of an hour. When a newer build is there
+it offers it: **Update** downloads it and hands it to Android, which asks you to
+confirm the install. The first time, it also asks you to allow installs from
+StreamHouse. **Later** puts the offer off for a day. **Settings → TV → Check for
+updates** (or **Menu → Check for updates**) looks right away and shows which
+version is installed.
+
+Your library, settings and downloads survive an update because every build is
+signed with the same key. Android refuses an update signed with a different key
+("App not installed"). A build made before the key existed has to be uninstalled
+once before the first signed build will install. After that, installing
+`streamhouse-tv.apk` with Downloader also updates in place, if the app itself
+ever cannot.
+
+### The signing key
+
+The key is a PKCS#12 keystore with the alias `streamhouse`. It lives in two
+repository secrets (**Settings → Secrets and variables → Actions**):
+
+| Secret | |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | the keystore, base64-encoded (`base64 -w0 streamhouse-release.p12`) |
+| `ANDROID_KEYSTORE_PASSWORD` | its password, which is also the key's password |
+
+Without them, a build on `main` fails rather than publish an APK that could not
+update anyone's app. Other branches build with a throwaway key. Keep a copy of
+the keystore somewhere safe: if it is lost, every device needs one uninstall
+before a build signed with a new key will install.
+
+Each build's `versionCode` is the minutes since 2020 when CI built it. Android
+refuses to install a lower one, and that number only goes up, whatever happens
+to the workflow. The `versionName` people see is `2.` and the run number. CI
+publishes a `version.json` beside the APK with both and the APK's SHA-256. The
+app compares the code with its own and checks the hash after downloading. A
+build made on your own machine has no update URL, so it never offers updates.
+The repository has to stay public, because the app downloads from it without
+signing in.
+
 ## First run
 
 The app starts StreamHouse on the device straight away. The very first start
@@ -60,6 +101,7 @@ keeps using the computer it was connected to until you choose **Use this device*
 | `SetupActivity.kt` | this device, or a computer — found on the network or typed in |
 | `Discovery.kt` | UDP broadcast probe, answered by `server/discovery.js` |
 | `WebBridge.kt` | what the web page may call on the device |
+| `Updater.kt` | checks `tv-latest` for a newer build, downloads it, hands it to the installer |
 | `src/node/webrtc-polyfill` | a stand-in that switches WebRTC off (see below) |
 
 **Node.js** comes from [nodejs-mobile](https://github.com/nodejs-mobile/nodejs-mobile):

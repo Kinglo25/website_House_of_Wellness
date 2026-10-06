@@ -12,6 +12,22 @@ val nodeMobileVersion = "18.20.4"
 val nodeMobileDir: File = layout.buildDirectory.dir("nodejs-mobile/$nodeMobileVersion").get().asFile
 val streamhouseDir: File = rootDir.parentFile
 
+// CI signs every build with the one StreamHouse key (see .github/workflows/android.yml),
+// so each installs over the last: Android refuses an update signed with a different key.
+val releaseKeystore: File? = System.getenv("STREAMHOUSE_KEYSTORE")?.let(::File)?.takeIf { it.isFile }
+
+// CI numbers each build (see the workflow), and the app offers a build whose
+// versionCode is higher than its own.
+val ciVersionCode: Int? = System.getenv("STREAMHOUSE_VERSION_CODE")?.toIntOrNull()
+val ciVersionName: String? = System.getenv("STREAMHOUSE_VERSION_NAME")
+
+// Where the app looks for newer builds: the tv-latest release. Only a build
+// signed with the StreamHouse key looks, since only that one can install what
+// it finds there.
+val updateUrl: String = System.getenv("STREAMHOUSE_UPDATE_URL")
+    ?.takeIf { releaseKeystore != null && ciVersionCode != null }
+    ?: ""
+
 android {
     namespace = "com.streamhouse.tv"
     compileSdk = 34
@@ -21,8 +37,9 @@ android {
         applicationId = "com.streamhouse.tv"
         minSdk = 24          // nodejs-mobile's Node needs Android 7.0
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = ciVersionCode ?: 2
+        versionName = ciVersionName ?: "2.0"
+        buildConfigField("String", "UPDATE_URL", "\"$updateUrl\"")
 
         externalNativeBuild {
             cmake {
@@ -35,13 +52,24 @@ android {
         }
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("STREAMHOUSE_KEYSTORE_PASSWORD")
+                keyAlias = "streamhouse"
+                keyPassword = System.getenv("STREAMHOUSE_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so a plain `assembleRelease` produces an
-            // APK that installs. Replace with your own keystore to publish.
-            signingConfig = signingConfigs.getByName("debug")
+            // Without the StreamHouse key, the debug key, so a plain `assembleRelease`
+            // still produces an APK that installs — just not over a CI build.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             // Android TVs and phones are ARM; each ABI adds about 18 MB.
             ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
         }
@@ -74,6 +102,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 

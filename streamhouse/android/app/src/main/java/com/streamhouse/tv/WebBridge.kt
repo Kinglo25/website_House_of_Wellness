@@ -27,4 +27,14 @@ class WebBridge(private val activity: MainActivity) {
     fun changeServer() {
         activity.runOnUiThread { activity.openSetup() }
     }
+
+    /** Which build of the app this is, for Settings. */
+    @JavascriptInterface
+    fun appVersion(): String = BuildConfig.VERSION_NAME
+
+    /** Settings → TV → Check for updates, for remotes with no Menu button. */
+    @JavascriptInterface
+    fun checkForUpdates() {
+        activity.runOnUiThread { Updater.checkNow(activity) }
+    }
 }

@@ -71,6 +71,7 @@ export const api = {
   accountLogin: body => request('/api/account/login', { method: 'POST', body }),
   accountSignup: body => request('/api/account/signup', { method: 'POST', body }),
   accountLogout: () => request('/api/account/logout', { method: 'POST' }),
+  accountDelete: body => request('/api/account/delete', { method: 'POST', body }),
   accountSync: () => request('/api/account/sync', { method: 'POST' }),
 
   progress: () => request('/api/progress'),

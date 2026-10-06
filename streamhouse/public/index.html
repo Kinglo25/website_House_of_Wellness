@@ -9,6 +9,25 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="StreamHouse">
   <title>StreamHouse</title>
+  <script>
+    /* A TV draws the page on a 1920 × 1080 canvas, scaled to fit its screen,
+       the way TV apps are laid out. Without this an Android TV's WebView, which
+       calls the screen 960 pixels wide, shows everything twice the size.
+       Decided before anything is drawn, the same way tv.js decides it. */
+    (function () {
+      var query = location.search
+      var tv = /[?&]tv=1(&|$)/.test(query)
+      if (!tv && !/[?&]tv=0(&|$)/.test(query)) {
+        var stored = null
+        try { stored = localStorage.getItem('sh-tv-mode') } catch (e) {}
+        tv = stored === 'on' || (stored !== 'off' &&
+          /tizen|web0s|webos|smart-?tv|smarttv|hbbtv|netcast|viera|bravia|aft[bmst]|android\s?tv|googletv|crkey|philipstv|netrange|dtv|roku/i.test(navigator.userAgent))
+      }
+      if (!tv) return
+      document.documentElement.classList.add('tv')
+      document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=1920')
+    })()
+  </script>
   <link rel="stylesheet" href="/css/style.css">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -19,27 +38,39 @@
     <nav class="rail">
       <div class="logo">S</div>
 
+      <!-- On a TV the search box lives on its own page, as on Netflix and
+           Google TV; everywhere else it is in the top bar. -->
+      <a class="item tv-only" href="#/search" title="Search" data-route="search">
+        <svg viewBox="0 0 24 24"><path d="M10 2a8 8 0 105 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0010 2zm0 2a6 6 0 110 12 6 6 0 010-12z"/></svg>
+        <span class="label">Search</span>
+      </a>
       <a class="item" href="#/board" title="Home" data-route="board">
         <svg viewBox="0 0 24 24"><path d="M12 3l9 8h-3v10h-5v-6h-2v6H6V11H3z"/></svg>
+        <span class="label">Home</span>
       </a>
       <a class="item" href="#/discover" title="Discover" data-route="discover">
         <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm3.6 6.4l-2.2 5.2-5.2 2.2 2.2-5.2 5.2-2.2z"/></svg>
+        <span class="label">Discover</span>
       </a>
       <a class="item" href="#/library" title="Library" data-route="library">
         <svg viewBox="0 0 24 24"><path d="M4 3h4v18H4zm6 0h4v18h-4zm7.3.6l3.9 17.5-3.9.9-3.9-17.5z"/></svg>
+        <span class="label">Library</span>
       </a>
       <a class="item" href="#/downloads" title="Downloads" data-route="downloads">
         <svg viewBox="0 0 24 24"><path d="M12 3v10l4-4 1.4 1.4L12 16.8 6.6 10.4 8 9l4 4V3zM4 19h16v2H4z"/></svg>
+        <span class="label">Downloads</span>
         <span class="badge" id="dl-badge" hidden>0</span>
       </a>
       <a class="item" href="#/addons" title="Add-ons" data-route="addons">
         <svg viewBox="0 0 24 24"><path d="M10 3h4v3a2 2 0 104 0V3h3v4h-3a2 2 0 100 4h3v10h-6v-3a2 2 0 10-4 0v3H3v-6h3a2 2 0 100-4H3V3h7z"/></svg>
+        <span class="label">Add-ons</span>
       </a>
 
       <div class="spacer"></div>
 
       <a class="item" href="#/settings" title="Settings" data-route="settings">
         <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 100 8 4 4 0 000-8zm9 4l2 1.6-1.6 3-2.4-.7a7.6 7.6 0 01-1.7 1l-.4 2.5h-3.6l-.4-2.5a7.6 7.6 0 01-1.7-1l-2.4.7L5.2 14 7 12.4a7 7 0 010-.8L5 10l1.6-3 2.4.7a7.6 7.6 0 011.7-1L11.1 4h3.6l.4 2.5c.6.3 1.2.6 1.7 1l2.4-.7L20.8 10 19 11.6c0 .3 0 .5.1.8z"/></svg>
+        <span class="label">Settings</span>
       </a>
     </nav>
 

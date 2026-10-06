@@ -33,9 +33,9 @@ project's own server built in (`DEFAULT_SERVER` in
 [`server/sync.js`](../server/sync.js)); to use yours instead, change that, or
 start StreamHouse with `STREAMHOUSE_ACCOUNT_SERVER=<address>`.
 
-Anyone who finds the address can create an account until you say otherwise. Once
-everyone in the house has one, set `ALLOW_SIGNUPS = "false"` in `wrangler.toml` and
-run `npm run deploy` again.
+Anyone can create an account, five an hour from each connection. To stop new
+accounts, set `ALLOW_SIGNUPS = "false"` in `wrangler.toml` and run `npm run deploy`
+again; existing accounts keep working.
 
 ## Running it locally
 
@@ -52,13 +52,15 @@ STREAMHOUSE_ACCOUNT_SERVER=http://127.0.0.1:8787 npm start
 ### Tests
 
 ```bash
-npm run dev -- --var ALLOW_SIGNUPS:true     # in one terminal: signups are off in wrangler.toml
-npm test                                    # in another
+npm run dev     # in one terminal
+npm test        # in another
 ```
 
-They sign up, sync between two devices, page through a long history, sign out and
-hit the wrong-password lockout, all against the running server. Each run uses a fresh
-email, so they can be repeated against the same local database.
+They sign up, sync between two devices, page through a long history, sign out, hit
+the sign-up limit and the storage limit, delete an account and hit the
+wrong-password lockout, all against the running server. Each run uses fresh emails
+and made-up connection addresses, so they can be repeated against the same local
+database.
 
 ## How sync works
 
@@ -84,6 +86,7 @@ All JSON. Everything but sign-up and sign-in takes `Authorization: Bearer <token
 | POST | `/v1/signup` | `{email, key, device}` → `{token, user}` |
 | POST | `/v1/login` | `{email, key, device}` → `{token, user}` |
 | POST | `/v1/logout` | ends this device's session |
+| POST | `/v1/account/delete` | `{key}` → deletes the account, everything synced to it and every device's session |
 | GET | `/v1/me` | `{user}` |
 | GET | `/v1/sync?since=<n>` | `{items: [{kind, key, value, updatedAt}], cursor, more}`, 500 at a time |
 | POST | `/v1/sync` | `{changes: [{kind, key, value, updatedAt}]}`, at most 40; `value: null` deletes |
@@ -95,6 +98,16 @@ All JSON. Everything but sign-up and sign-in takes `Authorization: Bearer <token
 - **10 ms of CPU per request** on the free plan — the reason passwords are
   stretched on the device rather than here.
 - **50 database queries per request** — the reason a push carries at most 40 changes.
-- **10 wrong passwords in 15 minutes** locks that email out for the rest of the window.
+- **10 wrong passwords in 15 minutes** locks that email out for the rest of the window,
+  whether they come from signing in or from deleting the account.
+- **5 new accounts an hour from each connection**, counting an IPv6 connection by
+  its /64, since that is what one home or phone is given.
+- **5 MB per account**, counting each item's key and value plus 64 bytes for its row.
+  Years of heavy use come to a megabyte or two. A full account can still delete
+  things, which makes room, but it cannot add any.
+- **500 MB for the whole database** on the free plan: a few hundred busy accounts.
 - 100,000 requests a day. A device makes one a minute while it is open, plus one
   per burst of edits, so a household does not come close.
+
+None of these limits cost money. On the free plan, Cloudflare refuses requests past
+a limit until the next day instead of charging for them.

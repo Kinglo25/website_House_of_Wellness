@@ -10,7 +10,8 @@ export default async function search ({ query, container }) {
   root.append(h(`<h1>Search</h1><p class="muted" style="margin-top:0">Results for “${esc(term)}”</p>`))
 
   if (!term.trim()) {
-    return root.append(emptyState({ title: 'Type something', message: 'Use the box at the top to search every installed add-on at once.' }))
+    const how = document.documentElement.classList.contains('tv') ? 'Press OK on the box above and type' : 'Use the box at the top'
+    return root.append(emptyState({ title: 'Type something', message: `${how} to search every installed add-on at once.` }))
   }
 
   const loading = skeletonStrip(8)

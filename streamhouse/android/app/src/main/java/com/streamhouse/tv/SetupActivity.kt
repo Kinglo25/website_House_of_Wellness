@@ -32,6 +32,8 @@ class SetupActivity : AppCompatActivity() {
         binding.servers.setOnItemClickListener { _, _, position, _ ->
             found.getOrNull(position)?.let { connect(it.url) }
         }
+        binding.version.text = getString(R.string.version, BuildConfig.VERSION_NAME)
+        binding.checkUpdates.setOnClickListener { Updater.checkNow(this) }
 
         scan()
     }

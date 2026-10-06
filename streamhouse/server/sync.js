@@ -305,6 +305,9 @@ class AccountSync {
       changedAt: state.changedAt[kind] || 0,
       deletable: adapter.deletable
     }))
+    // Deletions first: an account that is full still takes those, and they
+    // make room for the rest.
+    changes.sort((a, b) => (a.value === null ? 0 : 1) - (b.value === null ? 0 : 1))
 
     for (let index = 0; index < changes.length && this.signedIn; index += PUSH_BATCH) {
       const batch = changes.slice(index, index + PUSH_BATCH)
@@ -339,6 +342,18 @@ class AccountSync {
     const { token, server } = this.state
     this.forget(null)
     if (token) await this.request('POST', '/v1/logout', null, { token, server }).catch(() => {})
+    return this.status()
+  }
+
+  // Deletes the account and everything synced to it from the account server,
+  // which signs out every device. What is on this device stays, as after
+  // signing out.
+  async deleteAccount (password) {
+    const { email, token, server } = this.state
+    if (!token) throw failure(400, 'Sign in first')
+    const key = await deriveKey(password, email)
+    await this.request('POST', '/v1/account/delete', { key }, { token, server })
+    this.forget(null)
     return this.status()
   }
 

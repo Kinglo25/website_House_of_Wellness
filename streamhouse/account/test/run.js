@@ -1,13 +1,18 @@
 /* Tests for the account server, against a running copy of it.
  *
- *   npm run dev -- --var ALLOW_SIGNUPS:true     # in one terminal
- *   npm test                                    # in another
+ *   npm run dev     # in one terminal
+ *   npm test        # in another
  *
- * Signups are off in wrangler.toml, so the server under test has to be told to
- * take them. Every run signs up under a fresh email, so it can be repeated
- * against the same local database. */
+ * Every run signs up under fresh emails, from made-up connection addresses —
+ * the local server reads CF-Connecting-IP from the request, where Cloudflare
+ * would set it — so it can be repeated against the same local database. */
 
 const BASE = process.env.TEST_BASE || 'http://127.0.0.1:8787'
+
+const octet = () => Math.floor(Math.random() * 256)
+const hextet = () => Math.floor(Math.random() * 0x10000).toString(16)
+const newAddress = () => `10.${octet()}.${octet()}.${octet()}`
+const home = newAddress()
 
 let passed = 0
 let failed = 0
@@ -22,10 +27,11 @@ function ok (name, condition, extra = '') {
   }
 }
 
-async function call (path, { method = 'POST', body, token, raw } = {}) {
+async function call (path, { method = 'POST', body, token, raw, address = home } = {}) {
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers: {
+      'CF-Connecting-IP': address,
       ...(body !== undefined || raw !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
@@ -187,6 +193,92 @@ console.log('\nSigning out')
   ok('signs out', out.status === 200)
   ok('that token no longer works', (await call('/v1/me', { method: 'GET', token: second })).status === 401)
   ok('the other device stays signed in', (await call('/v1/me', { method: 'GET', token })).status === 200)
+}
+
+console.log('\nSign-ups per connection')
+{
+  const from = newAddress()
+  const statuses = []
+  for (let i = 0; i < 6; i += 1) {
+    statuses.push((await call('/v1/signup', { address: from, body: { email: `limit-${i}-${run}@example.test`, key } })).status)
+  }
+  ok('five accounts an hour from one connection, then refused', statuses.slice(0, 5).every(s => s === 201) && statuses[5] === 429,
+    statuses.join(','))
+  const elsewhere = await call('/v1/signup', { address: newAddress(), body: { email: `elsewhere-${run}@example.test`, key } })
+  ok('another connection is not held up', elsewhere.status === 201, `HTTP ${elsewhere.status}`)
+
+  // Written six ways, all in one /64.
+  const [a, b] = [hextet(), hextet()]
+  const sameHome = [`2001:db8:${a}:${b}::1`, `2001:0DB8:${a}:${b}:0:0:0:2`, `2001:db8:${a}:${b}:ffff::3`,
+    `2001:db8:${a}:${b}:1:2:3:4`, `2001:db8:${a}:${b}::5`, `2001:db8:${a}:${b}:aaaa:bbbb:cccc:dddd`]
+  const v6 = []
+  for (const [i, address] of sameHome.entries()) {
+    v6.push((await call('/v1/signup', { address, body: { email: `v6-${i}-${run}@example.test`, key } })).status)
+  }
+  ok('an IPv6 connection counts by its /64', v6.slice(0, 5).every(s => s === 201) && v6[5] === 429, v6.join(','))
+  const nextB = ((parseInt(b, 16) + 1) % 0x10000).toString(16)
+  const nextDoor = await call('/v1/signup', { address: `2001:db8:${a}:${nextB}::1`, body: { email: `v6-next-${run}@example.test`, key } })
+  ok('the next /64 is another connection', nextDoor.status === 201, `HTTP ${nextDoor.status}`)
+}
+
+console.log('\nA full account')
+{
+  const made = await call('/v1/signup', { address: newAddress(), body: { email: `full-${run}@example.test`, key } })
+  const fullToken = made.data?.token
+  const now = Date.now()
+  // Fifteen values just under the 64 KB limit fit in one push under the 1 MB
+  // body limit; six such pushes pass the 5 MB an account may keep.
+  const chunk = 'x'.repeat(62 * 1024)
+  const statuses = []
+  for (let push = 0; push < 7; push += 1) {
+    const changes = Array.from({ length: 15 }, (_, i) => ({ kind: 'library', key: `big-${push}-${i}`, value: chunk, updatedAt: now }))
+    statuses.push((await call('/v1/sync', { token: fullToken, body: { changes } })).status)
+  }
+  ok('fills up, then takes nothing more', statuses.slice(0, 6).every(s => s === 200) && statuses[6] === 413, statuses.join(','))
+
+  const { cursor } = (await call('/v1/sync', { method: 'GET', token: fullToken })).data
+  const freed = await call('/v1/sync', {
+    token: fullToken,
+    body: {
+      changes: [
+        ...Array.from({ length: 15 }, (_, i) => ({ kind: 'library', key: `big-0-${i}`, value: null, updatedAt: now + 1 })),
+        { kind: 'library', key: 'never-stored', value: null, updatedAt: now + 1 }
+      ]
+    }
+  })
+  ok('a full account can still delete', freed.status === 200, freed.data?.error)
+  const heard = await call(`/v1/sync?since=${cursor}`, { method: 'GET', token: fullToken })
+  ok('its deletions are heard, and nothing new is stored', heard.data?.items?.length === 15 && heard.data.items.every(i => i.value === null),
+    heard.data?.items?.map(i => i.key).join(' '))
+  const room = await call('/v1/sync', { token: fullToken, body: { changes: [{ kind: 'setting', key: 'after', value: 1, updatedAt: now + 2 }] } })
+  ok('with room again, it takes more', room.status === 200, room.data?.error)
+}
+
+console.log('\nDeleting an account')
+{
+  const address = newAddress()
+  const goneEmail = `gone-${run}@example.test`
+  const goneKey = keyFor(`gone ${run}`)
+  const made = await call('/v1/signup', { address, body: { email: goneEmail, key: goneKey } })
+  const goneToken = made.data?.token
+  const otherDevice = (await call('/v1/login', { body: { email: goneEmail, key: goneKey } })).data?.token
+  await call('/v1/sync', { token: goneToken, body: { changes: [{ kind: 'setting', key: 'x', value: 1, updatedAt: Date.now() }] } })
+
+  const wrong = await call('/v1/account/delete', { token: goneToken, body: { key: keyFor('wrong') } })
+  const stillThere = await call('/v1/me', { method: 'GET', token: goneToken })
+  ok('a wrong password deletes nothing', wrong.status === 401 && stillThere.status === 200, wrong.data?.error)
+  const noDevice = await call('/v1/account/delete', { body: { key: goneKey } })
+  ok('nor does the password without a signed-in device', noDevice.status === 401, noDevice.data?.error)
+
+  const deleted = await call('/v1/account/delete', { token: goneToken, body: { key: goneKey } })
+  ok('the password deletes it', deleted.status === 200, deleted.data?.error)
+  const both = [goneToken, otherDevice].map(t => call('/v1/me', { method: 'GET', token: t }))
+  ok('every device is signed out', (await Promise.all(both)).every(r => r.status === 401))
+  ok('the password no longer signs in', (await call('/v1/login', { body: { email: goneEmail, key: goneKey } })).status === 401)
+  const fresh = await call('/v1/signup', { address, body: { email: goneEmail, key: goneKey } })
+  const nothing = await call('/v1/sync', { method: 'GET', token: fresh.data?.token })
+  ok('the email can sign up again, with nothing left over', fresh.status === 201 && nothing.data?.items?.length === 0,
+    `HTTP ${fresh.status}, ${nothing.data?.items?.length} items`)
 }
 
 console.log('\nWrong-password lockout')

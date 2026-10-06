@@ -31,6 +31,9 @@ export async function render () {
   const path = currentPath()
   const [pathname, queryString] = path.split('?')
   const query = Object.fromEntries(new URLSearchParams(queryString || ''))
+  // Which section is showing, for the stylesheet: a TV shows the search box
+  // on the search page only.
+  document.documentElement.dataset.route = pathname.split('/')[1] || 'board'
 
   for (const entry of routes) {
     const match = entry.regex.exec(pathname)

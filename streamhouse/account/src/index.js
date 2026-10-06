@@ -26,6 +26,14 @@ const KINDS = new Set(['progress', 'library', 'addons', 'setting'])
 const LOCKOUT_FAILURES = 10
 const LOCKOUT_WINDOW_MS = 15 * 60 * 1000
 const SEEN_EVERY_MS = 60 * 60 * 1000
+// Anyone can sign up, so each connection gets a few accounts an hour: enough
+// for a household setting up its devices, too few to fill the database.
+const SIGNUPS_PER_HOUR = 5
+const SIGNUP_WINDOW_MS = 60 * 60 * 1000
+// What one account may keep, counted the way users.stored_bytes counts (see
+// migrations/0002_limits.sql). Years of heavy use come to a megabyte or two;
+// the free plan's whole database holds 500 MB.
+const MAX_ACCOUNT_BYTES = 5 * 1024 * 1024
 
 class HttpError extends Error {
   constructor (status, message) {
@@ -59,6 +67,7 @@ async function route (request, env) {
   if (method === 'POST' && pathname === '/v1/signup') return signup(request, env)
   if (method === 'POST' && pathname === '/v1/login') return login(request, env)
   if (method === 'POST' && pathname === '/v1/logout') return logout(request, env)
+  if (method === 'POST' && pathname === '/v1/account/delete') return deleteAccount(request, env)
   if (method === 'GET' && pathname === '/v1/me') {
     const { user } = await authenticate(request, env)
     return json({ user: publicUser(user) })
@@ -106,6 +115,19 @@ const hashKey = (salt, key) => sha256Hex(`${salt}:${key}`)
 
 const publicUser = user => ({ email: user.email, createdAt: user.created_at })
 
+// Cloudflare sets CF-Connecting-IP itself, so a client cannot pick its own. An
+// IPv6 connection counts by its /64, since one home or phone is given a whole
+// /64 and could otherwise sign up from each address in it.
+function addressOf (request) {
+  const ip = request.headers.get('cf-connecting-ip') || ''
+  if (!ip.includes(':')) return ip
+  const [head, tail] = ip.toLowerCase().split('::')
+  const left = head ? head.split(':') : []
+  const right = tail ? tail.split(':') : []
+  const groups = tail === undefined ? left : [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right]
+  return `${groups.slice(0, 4).map(group => group.replace(/^0+(?=.)/, '')).join(':')}::/64`
+}
+
 /* ----------------------------------------------------------------- accounts */
 
 async function signup (request, env) {
@@ -113,8 +135,23 @@ async function signup (request, env) {
     throw new HttpError(403, 'This account server is not taking new accounts')
   }
   const { email, key, device } = credentials(await readJson(request))
+
+  const now = Date.now()
+  const [, counted] = await env.DB.batch([
+    // An address is kept only for as long as it counts.
+    env.DB.prepare('DELETE FROM signup_attempts WHERE first_at <= ?').bind(now - SIGNUP_WINDOW_MS),
+    env.DB.prepare(`
+      INSERT INTO signup_attempts (address, count, first_at) VALUES (?1, 1, ?2)
+      ON CONFLICT (address) DO UPDATE SET count = count + 1
+      RETURNING count`)
+      .bind(addressOf(request), now)
+  ])
+  if (counted.results[0].count > SIGNUPS_PER_HOUR) {
+    throw new HttpError(429, 'Too many new accounts from this connection — try again in an hour')
+  }
+
   const salt = toHex(crypto.getRandomValues(new Uint8Array(16)))
-  const user = { id: crypto.randomUUID(), email, created_at: Date.now() }
+  const user = { id: crypto.randomUUID(), email, created_at: now }
   try {
     await env.DB.prepare('INSERT INTO users (id, email, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, ?)')
       .bind(user.id, email, await hashKey(salt, key), salt, user.created_at)
@@ -128,6 +165,13 @@ async function signup (request, env) {
 
 async function login (request, env) {
   const { email, key, device } = credentials(await readJson(request))
+  const user = await checkPassword(env, email, key)
+  return json({ token: await openSession(env, user.id, device), user: publicUser(user) })
+}
+
+// The account for this email and key, or a 401. Wrong keys count towards a
+// lockout, whether they come from signing in or from deleting the account.
+async function checkPassword (env, email, key) {
   const now = Date.now()
 
   const failures = await env.DB.prepare('SELECT count, first_at FROM login_failures WHERE email = ?').bind(email).first()
@@ -153,7 +197,7 @@ async function login (request, env) {
   }
 
   if (failures) await env.DB.prepare('DELETE FROM login_failures WHERE email = ?').bind(email).run()
-  return json({ token: await openSession(env, user.id, device), user: publicUser(user) })
+  return user
 }
 
 // Tokens are random and only their hash is stored, so a copy of the database
@@ -172,7 +216,7 @@ async function authenticate (request, env) {
   if (!token) throw new HttpError(401, 'Sign in first')
   const tokenHash = await sha256Hex(token)
   const user = await env.DB.prepare(`
-    SELECT sessions.last_seen, users.id, users.email, users.created_at
+    SELECT sessions.last_seen, users.id, users.email, users.created_at, users.stored_bytes
     FROM sessions JOIN users ON users.id = sessions.user_id
     WHERE sessions.token_hash = ?`)
     .bind(tokenHash)
@@ -190,6 +234,20 @@ async function authenticate (request, env) {
 async function logout (request, env) {
   const { tokenHash } = await authenticate(request, env)
   await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(tokenHash).run()
+  return json({ ok: true })
+}
+
+// The account, everything synced to it and its sessions on every device. The
+// password is asked for again, so a device left signed in cannot do it alone.
+async function deleteAccount (request, env) {
+  const { user } = await authenticate(request, env)
+  const { key } = credentials({ ...(await readJson(request)), email: user.email })
+  await checkPassword(env, user.email, key)
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM items WHERE user_id = ?').bind(user.id),
+    env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id),
+    env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id)
+  ])
   return json({ ok: true })
 }
 
@@ -227,6 +285,16 @@ const UPSERT = `
     seq = excluded.seq
   WHERE excluded.updated_at > items.updated_at`
 
+// A full account can still delete what it stores, which makes room, but it
+// adds nothing, not even the empty row that records deleting something it
+// never stored.
+const DELETE_STORED = `
+  UPDATE items SET
+    value = NULL,
+    updated_at = ?4,
+    seq = (SELECT COALESCE(MAX(seq), 0) + 1 FROM items WHERE user_id = ?1)
+  WHERE user_id = ?1 AND kind = ?2 AND key = ?3 AND updated_at < ?4`
+
 async function push (request, env) {
   const { user } = await authenticate(request, env)
   const body = await readJson(request)
@@ -235,6 +303,7 @@ async function push (request, env) {
 
   // A device whose clock runs fast must not win every argument for ever.
   const latest = Date.now() + MAX_CLOCK_SKEW_MS
+  const full = user.stored_bytes >= MAX_ACCOUNT_BYTES
   const seen = new Set()
   const statements = []
   body.changes.forEach((change, index) => {
@@ -246,8 +315,13 @@ async function push (request, env) {
     seen.add(`${kind}\n${key}`)
     const value = change.value === null || change.value === undefined ? null : JSON.stringify(change.value)
     if (value && value.length > MAX_VALUE_BYTES) throw new HttpError(413, `Change ${index}: value too large`)
+    if (full && value !== null) {
+      throw new HttpError(413, 'This account is full — remove titles from your library or Continue watching to make room')
+    }
     const updatedAt = Math.min(Math.max(0, Math.floor(Number(change.updatedAt) || 0)), latest)
-    statements.push(env.DB.prepare(UPSERT).bind(user.id, kind, key, value, updatedAt))
+    statements.push(full
+      ? env.DB.prepare(DELETE_STORED).bind(user.id, kind, key, updatedAt)
+      : env.DB.prepare(UPSERT).bind(user.id, kind, key, value, updatedAt))
   })
 
   if (statements.length) await env.DB.batch(statements)

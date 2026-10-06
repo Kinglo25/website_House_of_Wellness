@@ -14,6 +14,8 @@ import { introSpan, inIntro, skipTracker } from '../public/js/intro.js'
 import { MAIN, scopeKey, splitKey, progressOf, libraryOf, normalise, viewerOf } from '../server/viewers.js'
 import { recordPosition, setWatched, hide } from '../server/watching.js'
 import { inProgress, upNextCandidates, upNext, episodeLabel, sortLibrary, followedShows, episodeCalendar, continueRow, seriesOf } from '../public/js/watching.js'
+import { seedsFrom, seenTitles, tasteTypes, tasteGenres, traitsOf, similarity, rankPicks, sortPicks, inEra, yearOf, mixSlides } from '../public/js/taste.js'
+import { wellRated, browsable } from '../public/js/util.js'
 
 let passed = 0
 let failed = 0
@@ -519,6 +521,119 @@ console.log('\nContinue watching: one tile per show')
   eq('a finished show taken off the row stays off', row({
     'tt1:1:1': { id: 'tt1:1:1', time: 0, watched: true, hidden: true, updatedAt: 8, meta: show }
   }), '')
+}
+
+console.log('\nFor you: what you watched, and how much it counts')
+{
+  const now = 1000 * 864e5
+  const film = (id, share, at = now) => ({ [id]: { id, time: share < 1 ? share * 6000 : 0, duration: 6000, watched: share >= 1, updatedAt: at, meta: { type: 'movie', imdbId: id } } })
+  const episode = (show, number, at = now) => ({ [`${show}:1:${number}`]: { id: `${show}:1:${number}`, time: 0, watched: true, updatedAt: at, meta: { type: 'series', imdbId: show, name: `Show S1E${number}` } } })
+  const weight = (seeds, id) => seeds.find(seed => seed.id === id)?.weight || 0
+
+  const seeds = seedsFrom({ ...film('finished', 1), ...film('sampled', 0.02) }, [], { now })
+  ok('a film watched through outweighs one sampled for a minute', weight(seeds, 'finished') > 2 * weight(seeds, 'sampled'))
+  const show = seedsFrom({ ...episode('tt5', 1), ...episode('tt5', 2), ...episode('tt5', 3) }, [], { now })
+  eq('episodes are one seed, their show', show.map(seed => `${seed.id}:${seed.type}`).join(), 'tt5:series')
+  eq('named as the show, not the episode', show[0].name, 'Show')
+  ok('a show grows with the episodes watched', weight(show, 'tt5') > weight(seedsFrom(episode('tt5', 1), [], { now }), 'tt5'))
+  ok('saving a title counts as interest', weight(seedsFrom({}, [{ id: 'saved', type: 'movie', addedAt: now }], { now }), 'saved') > 0)
+  ok('last week counts more than last year', weight(seedsFrom(film('recent', 1, now - 7 * 864e5), [], { now }), 'recent') >
+    weight(seedsFrom(film('old', 1, now - 365 * 864e5), [], { now }), 'old'))
+  ok('but last year still counts', weight(seedsFrom(film('old', 1, now - 365 * 864e5), [], { now }), 'old') > 0)
+  eq('channels are not seeds', seedsFrom({}, [{ id: 'c1', type: 'channel', addedAt: now }], { now }).length, 0)
+  eq('the kind watched most comes first', tasteTypes([{ type: 'movie', weight: 0.5 }, { type: 'series', weight: 0.4 }, { type: 'series', weight: 0.3 }]).join(), 'series,movie')
+
+  const seen = seenTitles({ ...episode('tt5', 2), ...film('tt9', 0.5) })
+  ok('an episode marks its show as seen', seen.has('tt5') && !seen.has('tt5:1:2'))
+  ok('and a film itself', seen.has('tt9'))
+}
+
+console.log('\nFor you: more like what you watch')
+{
+  const meta = (id, genres, extra = {}) => ({ id, type: 'series', name: id, genres, imdbRating: '8.0', releaseInfo: '2021', ...extra })
+  const mightyNein = meta('Mighty Nein', ['Animation', 'Action', 'Adventure'], { writer: ['Critical Role'], country: 'United States' })
+  const lanterns = meta('Lanterns', ['Action', 'Crime', 'Drama'])
+
+  const alike = similarity(traitsOf(mightyNein), traitsOf(meta('Vox Machina', ['Animation', 'Action', 'Adventure'], { writer: ['Critical Role'], country: 'United States' })))
+  const cartoon = similarity(traitsOf(mightyNein), traitsOf(meta('Arcane', ['Animation', 'Action', 'Adventure'])))
+  const liveAction = similarity(traitsOf(mightyNein), traitsOf(meta('Gladiator', ['Action', 'Adventure', 'Drama'])))
+  ok('the same people make a title more alike', alike > cartoon, `${alike.toFixed(2)} > ${cartoon.toFixed(2)}`)
+  ok('animation is not live action, whatever the other genres', cartoon > 2 * liveAction, `${cartoon.toFixed(2)} vs ${liveAction.toFixed(2)}`)
+  eq('nothing in common is not alike at all', similarity(traitsOf(meta('a', ['Horror'])), traitsOf(meta('b', ['Romance']))), 0)
+  eq('a series is dated by its first year', yearOf({ releaseInfo: '2019–2023' }), 2019)
+  eq('genres read from either field', tasteGenres([{ weight: 1, meta: { genre: ['Horror', 'Drama'] } }]).join(), 'Horror,Drama')
+
+  const seeds = [{ weight: 1, meta: mightyNein }, { weight: 0.5, meta: lanterns }]
+  const candidates = [
+    meta('Vox Machina', ['Animation', 'Action', 'Adventure'], { writer: ['Critical Role'] }),
+    meta('Arcane', ['Animation', 'Action', 'Adventure'], { imdbRating: '9.0' }),
+    meta('Invincible', ['Animation', 'Action', 'Adventure'], { imdbRating: '7.0' }),
+    meta('Castlevania', ['Animation', 'Action', 'Adventure']),
+    meta('Primal', ['Animation', 'Action', 'Adventure']),
+    meta('Daredevil', ['Action', 'Crime', 'Drama']),
+    meta('Bridgerton', ['Romance', 'Drama']),
+    meta('Mighty Nein', ['Animation', 'Action', 'Adventure']),
+    meta('Saved one', ['Animation', 'Action', 'Adventure'])
+  ]
+  const picks = rankPicks(candidates, seeds, { exclude: new Set(['Mighty Nein', 'Saved one']) })
+  const order = picks.map(pick => pick.meta.id)
+  eq('the closest title comes first', order[0], 'Vox Machina')
+  eq('with the title it is like', picks[0].because, 'Mighty Nein')
+  ok('what you watched or saved is never suggested back', !order.includes('Mighty Nein') && !order.includes('Saved one'))
+  ok('something like nothing you watch is left out', !order.includes('Bridgerton'))
+  ok('between equals, the better rated first', order.indexOf('Arcane') < order.indexOf('Invincible'))
+  ok('your other titles get a turn before one fills the list', order.indexOf('Daredevil') < order.length - 1 && order.indexOf('Daredevil') > 0, order.join(' > '))
+  eq('said to be like Lanterns', picks.find(pick => pick.meta.id === 'Daredevil').because, 'Lanterns')
+  eq('each title once, however many lists it came from', rankPicks([...candidates, ...candidates], seeds).length, rankPicks(candidates, seeds).length)
+  eq('no seeds, no picks', rankPicks(candidates, []).length, 0)
+
+  const sorted = sortPicks([
+    { meta: meta('a', [], { imdbRating: '7.1', releaseInfo: '2001' }) },
+    { meta: meta('b', [], { imdbRating: '8.2', releaseInfo: '1999' }) },
+    { meta: meta('c', [], { imdbRating: '7.1', releaseInfo: '2024' }) }
+  ], 'rating')
+  eq('highest rated first, ties as ranked', sorted.map(pick => pick.meta.id).join(), 'b,a,c')
+  eq('or newest first', sortPicks(sorted, 'newest').map(pick => pick.meta.id).join(), 'c,a,b')
+}
+
+console.log('\nThe billboard: a varied handful')
+{
+  const title = (id, genre, extra = {}) => ({ meta: { id, name: id, genres: [genre], background: `${id}.jpg`, poster: `${id}-p.jpg`, ...extra } })
+  const films = { label: 'Popular · Films', items: [title('f1', 'Action'), title('f2', 'Action'), title('f3', 'Comedy'), title('f4', 'Drama')] }
+  const series = { label: 'Popular · Series', items: [title('s1', 'Crime'), title('s2', 'Sci-Fi'), title('s3', 'Drama')] }
+  const yours = { label: 'Series for you', items: [{ ...title('y1', 'Animation'), because: 'The Mighty Nein' }, title('y2', 'Animation'), title('y3', 'Fantasy')] }
+  const ids = slides => slides.map(slide => slide.meta.id).join()
+
+  eq('sources take turns, in the order given', ids(mixSlides([yours, films, series], { perSource: 1 })), 'y1,f1,s1')
+  eq('each at most twice', ids(mixSlides([yours, films, series])), 'y1,f1,s1,y3,f3,s2')
+  eq('never more than asked for', mixSlides([yours, films, series], { max: 4 }).length, 4)
+  eq('a genre already featured waits its turn', ids(mixSlides([films], { perSource: 2 })), 'f1,f3')
+  eq('but is used when a source has nothing else', ids(mixSlides([{ label: 'x', items: [title('a1', 'Action'), title('a2', 'Action')] }])), 'a1,a2')
+  eq('a title from two sources is featured once', ids(mixSlides([films, { label: 'Featured', items: [title('f1', 'Action'), title('g1', 'War')] }], { perSource: 1 })), 'f1,g1')
+  eq('nothing watched or saved', ids(mixSlides([films], { perSource: 1, exclude: new Set(['f1']) })), 'f2')
+  ok('a different set each day', ids(mixSlides([films, series], { day: 1 })) !== ids(mixSlides([films, series], { day: 0 })))
+  eq('each slide says where it is from', mixSlides([yours, films], { perSource: 1 }).map(slide => slide.label).join(' / '), 'Series for you / Popular · Films')
+  eq('and, for you, what it is like', mixSlides([yours], { perSource: 1 })[0].because, 'The Mighty Nein')
+  const posterOnly = { label: 'x', items: [title('p1', 'War', { background: '' }), title('w1', 'Action'), title('w2', 'Comedy'), title('w3', 'Drama')] }
+  ok('a title without a wide picture is passed over when there are others', !ids(mixSlides([posterOnly], { perSource: 4 })).includes('p1'))
+  eq('but not when there are none', ids(mixSlides([{ label: 'x', items: [title('p1', 'War', { background: '' })] }])), 'p1')
+  eq('no sources, no slides', mixSlides([]).length, 0)
+}
+
+console.log('\nDiscover: what is shown, and what can be browsed')
+{
+  ok('a film rated 6.5 is not shown', !wellRated({ type: 'movie', imdbRating: '6.5' }))
+  ok('one rated 6.6 is', wellRated({ type: 'movie', imdbRating: '6.6' }))
+  ok('an unrated film is not', !wellRated({ type: 'movie' }))
+  ok('a channel has no rating to judge', wellRated({ type: 'channel' }))
+  ok('1990s holds 1999', inEra({ releaseInfo: '1999' }, '1990') && !inEra({ releaseInfo: '2000' }, '1990'))
+  ok('before 1990', inEra({ year: '1972' }, 'old') && !inEra({ year: '1990' }, 'old'))
+  ok('no year is in no decade, but in "any year"', !inEra({}, '2020') && inEra({}, ''))
+  ok('Popular can be browsed', browsable({ requires: [] }))
+  ok('so can New, whose required genre is a year it offers', browsable({ requires: ['genre'] }))
+  ok('Last videos cannot: it needs the ids of the episodes you follow', !browsable({ requires: ['lastVideosIds'] }))
+  ok('nor a search-only catalogue', !browsable({ requiresSearch: true, requires: ['search'] }))
+  ok('a server that does not say is taken at its word', browsable({}))
 }
 
 /* -------------------------------------------------------------------- done */

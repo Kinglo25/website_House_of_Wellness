@@ -20,6 +20,11 @@ export default async function settings ({ container, query = {} }) {
   ])
   const grid = h('<div class="settings-grid"></div>')
   root.append(grid)
+  // In the Android app, which decides ten-foot mode itself. With StreamHouse
+  // running on the device too, nothing about a computer's player, network or
+  // folders applies — and the app only finds it on its own port and address.
+  const inApp = Boolean(window.StreamHouseTV)
+  const onDevice = inApp && ['127.0.0.1', 'localhost'].includes(location.hostname)
   // Switches are buttons, so a remote and a keyboard can reach them; this keeps
   // what they announce in step with how they look, whichever code flips them.
   const announce = toggle => toggle.setAttribute('aria-checked', String(toggle.classList.contains('on')))
@@ -116,9 +121,10 @@ export default async function settings ({ container, query = {} }) {
           Continue watching, add-ons and stream settings follow you to every device signed in here.</span>`
       accountPanel.append(
         h(`<div class="label"><b>Signed in as ${esc(info.email)}</b>${line}</div>`),
-        h(`<div class="control row" style="gap:8px">
+        h(`<div class="control row" style="gap:8px;flex-wrap:wrap">
           <button class="btn" data-act="sync">Sync now</button>
           <button class="btn" data-act="logout">Sign out</button>
+          <button class="btn danger" data-act="delete">Delete account</button>
         </div>`)
       )
       accountPanel.querySelector('[data-act="sync"]').addEventListener('click', async event => {
@@ -137,6 +143,24 @@ export default async function settings ({ container, query = {} }) {
         drawAccount(await api.accountLogout().catch(() => null))
         toast('Signed out', 'ok')
       })
+      accountPanel.querySelector('[data-act="delete"]').addEventListener('click', async () => {
+        const answer = await confirmDialog({
+          title: 'Delete your account?',
+          body: `<p class="muted">This deletes ${esc(info.email)} and everything synced to it from the account
+            server, and signs out every device. What is already on this device stays here.</p>
+            <input class="field" name="password" type="password" autocomplete="current-password"
+              placeholder="Your password" style="width:100%;margin-top:12px">`,
+          confirmLabel: 'Delete account',
+          danger: true
+        })
+        if (!answer) return
+        try {
+          drawAccount(await api.accountDelete({ password: answer.password }))
+          toast('Account deleted', 'ok')
+        } catch (err) {
+          toast(err.message, 'err')
+        }
+      })
       return
     }
 
@@ -145,6 +169,9 @@ export default async function settings ({ container, query = {} }) {
         <b>Sign in to sync your devices</b>
         <span class="tiny muted">Your library, Continue watching, add-ons and stream settings follow you
         to every device signed in to the same account. Films do not — each device fetches its own.</span>
+        <span class="tiny muted">The account server keeps your email, those lists and the names of your
+        signed-in devices — not your password, which never leaves this device. Delete account removes
+        all of it.</span>
         ${info?.lastError ? `<span class="tiny" style="color:#ff9ba4">${esc(info.lastError)}</span>` : ''}
         <form style="display:grid;gap:8px;margin-top:12px;max-width:360px">
           <input class="field" name="email" type="email" autocomplete="username" placeholder="Email" required>
@@ -180,23 +207,25 @@ export default async function settings ({ container, query = {} }) {
 
   /* ------------------------------------------------------------ playback */
 
-  grid.append(h('<h2 style="margin-top:22px">Playback</h2>'))
-  const vlcHint = vlc?.available
-    ? `VLC plays every soundtrack; in the browser many films have no sound. Phones, TVs and other
-      computers always play in the page. <span class="mono">${esc(vlc.path)}</span>`
-    : `VLC is not installed, so everything plays in the browser — where many films have no sound.
-      Get it from <a href="https://www.videolan.org/vlc/" target="_blank" rel="noopener">videolan.org</a>
-      and it is picked up straight away.`
-  grid.append(selectSetting({
-    key: 'desktopPlayer',
-    title: 'Play on this computer with',
-    hint: vlcHint,
-    value: config.desktopPlayer,
-    options: [
-      { value: 'vlc', label: 'VLC' },
-      { value: 'browser', label: 'The browser' }
-    ]
-  }))
+  if (!onDevice) {
+    grid.append(h('<h2 style="margin-top:22px">Playback</h2>'))
+    const vlcHint = vlc?.available
+      ? `VLC plays every soundtrack; in the browser many films have no sound. Phones, TVs and other
+        computers always play in the page. <span class="mono">${esc(vlc.path)}</span>`
+      : `VLC is not installed, so everything plays in the browser — where many films have no sound.
+        Get it from <a href="https://www.videolan.org/vlc/" target="_blank" rel="noopener">videolan.org</a>
+        and it is picked up straight away.`
+    grid.append(selectSetting({
+      key: 'desktopPlayer',
+      title: 'Play on this computer with',
+      hint: vlcHint,
+      value: config.desktopPlayer,
+      options: [
+        { value: 'vlc', label: 'VLC' },
+        { value: 'browser', label: 'The browser' }
+      ]
+    }))
+  }
 
   /* ------------------------------------------------------------ TV */
 
@@ -212,7 +241,7 @@ export default async function settings ({ container, query = {} }) {
       </div>
       <button type="button" role="switch" class="switch ${network?.reachable ? 'on' : ''}" id="tv-expose" aria-label="Allow other devices"><i></i></button>
     </div>`)
-  grid.append(tvPanel)
+  if (!onDevice) grid.append(tvPanel)
 
   function drawAddress (info) {
     const box = tvPanel.querySelector('#tv-address')
@@ -268,7 +297,24 @@ export default async function settings ({ container, query = {} }) {
     setTvMode(next)
     toast(next ? 'Ten-foot mode on — use the arrow keys' : 'Ten-foot mode off', 'ok')
   })
-  grid.append(tvModePanel)
+  if (!inApp) grid.append(tvModePanel)
+
+  // Inside the Android app, which looks for a newer version by itself when it
+  // opens; this looks right now, and many TV remotes have no Menu button.
+  const nativeApp = window.StreamHouseTV
+  if (nativeApp?.checkForUpdates) {
+    const appPanel = h(`
+      <div class="setting">
+        <div class="label">
+          <b>App version</b>
+          <span class="tiny muted">StreamHouse ${esc(nativeApp.appVersion())} for Android. It offers
+          each new version when you open it; this checks right now.</span>
+        </div>
+        <div class="control"><button class="btn" id="app-update">Check for updates</button></div>
+      </div>`)
+    appPanel.querySelector('#app-update').addEventListener('click', () => nativeApp.checkForUpdates())
+    grid.append(appPanel)
+  }
 
   const castPanel = h(`
     <div class="setting">
@@ -321,12 +367,14 @@ export default async function settings ({ container, query = {} }) {
   }))
 
   grid.append(h('<h2 style="margin-top:22px">Downloads</h2>'))
-  grid.append(textSetting({
-    key: 'downloadDir',
-    title: 'Download folder',
-    hint: disk ? `${disk.writable ? 'writable' : 'NOT writable — pick another folder'}` : 'where finished media is kept',
-    value: config.downloadDir
-  }))
+  if (!onDevice) {
+    grid.append(textSetting({
+      key: 'downloadDir',
+      title: 'Download folder',
+      hint: disk ? `${disk.writable ? 'writable' : 'NOT writable — pick another folder'}` : 'where finished media is kept',
+      value: config.downloadDir
+    }))
+  }
   grid.append(numberSetting({
     key: 'downloadLimit',
     title: 'Download limit',
@@ -377,19 +425,21 @@ export default async function settings ({ container, query = {} }) {
     hint: '0 lets the OS choose a free port',
     value: config.torrentPort
   }))
-  grid.append(numberSetting({
-    key: 'port',
-    title: 'Web interface port',
-    hint: 'takes effect after a restart',
-    value: config.port,
-    min: 1
-  }))
-  grid.append(textSetting({
-    key: 'host',
-    title: 'Bind address',
-    hint: 'set by the TV switch above — 127.0.0.1 is this computer only, 0.0.0.0 is your whole network',
-    value: config.host
-  }))
+  if (!onDevice) {
+    grid.append(numberSetting({
+      key: 'port',
+      title: 'Web interface port',
+      hint: 'takes effect after a restart',
+      value: config.port,
+      min: 1
+    }))
+    grid.append(textSetting({
+      key: 'host',
+      title: 'Bind address',
+      hint: 'set by the TV switch above — 127.0.0.1 is this computer only, 0.0.0.0 is your whole network',
+      value: config.host
+    }))
+  }
 
   grid.append(h('<h2 style="margin-top:22px">Maintenance</h2>'))
   const maintenance = h(`

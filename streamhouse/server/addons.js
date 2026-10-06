@@ -233,6 +233,7 @@ class AddonManager {
           genres: extras.find(extra => extra.name === 'genre')?.options || [],
           searchable: extras.some(extra => extra.name === 'search'),
           requiresSearch: extras.some(extra => extra.name === 'search' && extra.isRequired),
+          requires: extras.filter(extra => extra.isRequired).map(extra => extra.name),
           extras: extras.map(extra => extra.name)
         })
       }

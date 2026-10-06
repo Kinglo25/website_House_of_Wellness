@@ -3,8 +3,9 @@ main = "src/index.js"
 compatibility_date = "2025-09-01"
 
 [vars]
-# Set to "false" and redeploy once everyone in the house has an account.
-ALLOW_SIGNUPS = "false"
+# Anyone can create an account, a few an hour from each connection (see
+# src/index.js). "false" stops new ones; existing accounts keep working.
+ALLOW_SIGNUPS = "true"
 
 [[d1_databases]]
 binding = "DB"

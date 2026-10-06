@@ -6,6 +6,7 @@ import android.content.Context
 object Prefs {
     private const val FILE = "streamhouse"
     private const val KEY_SERVER = "server_url"
+    private const val KEY_UPDATE_LATER = "update_later_until"
 
     /** Stored in place of an address when the app runs StreamHouse itself — the default. */
     const val THIS_DEVICE = "this-device"
@@ -18,6 +19,17 @@ object Prefs {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_SERVER, value)
+            .apply()
+    }
+
+    /** Until when "Later" puts off the offer of an update, in epoch milliseconds. */
+    fun updateLaterUntil(context: Context): Long =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong(KEY_UPDATE_LATER, 0L)
+
+    fun setUpdateLaterUntil(context: Context, value: Long) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_UPDATE_LATER, value)
             .apply()
     }
 

@@ -8,7 +8,7 @@ import { h, esc, posterUrl, percent } from './util.js'
 // a phone or a TV remote can reach, unlike a right-click.
 export const KINDS = { movie: 'Film', series: 'Series', channel: 'Channel', tv: 'TV' }
 
-export function metaCard (meta, { progress = 0, ribbon = '', sub = '', open = '', onRemove = null, removeLabel = 'Remove from row' } = {}) {
+export function metaCard (meta, { progress = 0, ribbon = '', sub = '', why = '', open = '', onRemove = null, removeLabel = 'Remove from row' } = {}) {
   const title = meta.name || meta.title || 'Untitled'
   // Year and genre, as Netflix and Stremio label a tile; the kind only when the
   // add-on gives no genre ("Film", not the raw "movie").
@@ -23,6 +23,7 @@ export function metaCard (meta, { progress = 0, ribbon = '', sub = '', open = ''
       </div>
       <div class="title">${esc(title)}</div>
       <div class="sub">${esc(subtitle)}</div>
+      ${why ? `<div class="why" title="${esc(why)}">${esc(why)}</div>` : ''}
     </div>`)
 
   const img = card.querySelector('img')
@@ -58,6 +59,18 @@ export function metaCard (meta, { progress = 0, ribbon = '', sub = '', open = ''
     }
   })
   return card
+}
+
+// Where the rating is what you are choosing by: it leads the tile's line.
+export function ratedSub (meta) {
+  return [meta.imdbRating ? `★ ${meta.imdbRating}` : '', meta.releaseInfo || meta.year, meta.genres?.[0] || KINDS[meta.type] || meta.type]
+    .filter(Boolean).join(' · ')
+}
+
+// A "For you" tile, saying which of your titles it is like — watched, or only
+// saved, so "like" rather than "because you watched".
+export function pickCard ({ meta, because }) {
+  return metaCard(meta, { sub: ratedSub(meta), why: because ? `Like ${because}` : '' })
 }
 
 export function detailHref (meta) {

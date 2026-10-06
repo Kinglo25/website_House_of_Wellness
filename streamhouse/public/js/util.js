@@ -106,6 +106,13 @@ export function wellRated (meta) {
   return !RATED_TYPES.includes(meta?.type) || Number(meta.imdbRating) > MIN_RATING
 }
 
+// A catalogue that can be paged through as it is. Some need something only
+// another page can give: a search term, or Cinemeta's "Last videos", the ids
+// of the episodes you follow. A required genre is fine: it is offered.
+export function browsable (catalog) {
+  return !catalog.requiresSearch && !(catalog.requires || []).some(name => name !== 'genre')
+}
+
 // Posters from add-ons occasionally 404; fall back to a generated tile so the
 // grid never shows a broken image icon.
 export function posterUrl (meta) {

@@ -75,11 +75,17 @@ setInterval(pollStats, 2000)
 /* ---------------------------------------------------------------- profiles */
 
 // The avatar in the top bar: who is watching, and a way to change it. Only
-// there once the household has more than one profile.
+// there once the household has more than one profile. A TV has no top bar, so
+// there it heads the menu, as it does on Netflix.
 const whoButton = document.createElement('button')
 whoButton.className = 'who-button'
 whoButton.hidden = true
-document.querySelector('.topbar').append(whoButton)
+const placeWhoButton = () => {
+  if (document.documentElement.classList.contains('tv')) document.querySelector('nav.rail .logo').after(whoButton)
+  else document.querySelector('.topbar').append(whoButton)
+}
+placeWhoButton()
+window.addEventListener('tvmodechange', placeWhoButton)
 let viewerList = []
 
 async function loadViewers () {
@@ -113,7 +119,9 @@ window.addEventListener('viewerschanged', loadViewers)
 
 /* -------------------------------------------------------------------- boot */
 
-if (!location.hash) location.hash = '#/board'
+// In place of the bare address rather than after it, or Back from Home would
+// first "go back" to the same Home page.
+if (!location.hash) history.replaceState(null, '', '#/board')
 initTvMode()
 ;(async () => {
   await loadViewers()

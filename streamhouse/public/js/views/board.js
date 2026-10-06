@@ -1,7 +1,15 @@
 import { api } from '../api.js'
-import { h, bytes, esc, wellRated } from '../util.js'
-import { metaCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox, detailHref, seeAllCard, withShowDetails } from '../components.js'
+import { h, bytes, esc, wellRated, browsable } from '../util.js'
+import { metaCard, pickCard, continueCard, upNextCard, shelf, skeletonStrip, emptyState, errorBox, seeAllCard, withShowDetails } from '../components.js'
 import { continueRow, seriesOf, upNext } from '../watching.js'
+import { tasteTypes } from '../taste.js'
+import { loadTaste, forYou, forYouHref } from '../foryou.js'
+import { billboard } from '../billboard.js'
+
+const TYPE_LABELS = { movie: 'Films', series: 'Series', channel: 'Channels', tv: 'TV' }
+
+// The billboard waits this long at most for its sources before showing.
+const SETTLE_MS = 2500
 
 // Home. Continue watching, whatever is downloading right now, then the first
 // page of every catalogue the installed add-ons expose.
@@ -9,12 +17,16 @@ export default async function board ({ container }) {
   container.innerHTML = '<div class="pad" id="board"></div>'
   const root = container.querySelector('#board')
 
-  // Netflix's billboard: one title from the first catalogue, a different one
-  // each day, filled in once that catalogue answers. Until then — or if it
-  // never does — the page keeps its plain heading.
+  // Netflix's billboard, with a choice: a few titles from your For you picks
+  // and each catalogue, films and series of different genres, a different set
+  // each day. A placeholder holds its place until they answer; if none does,
+  // the page keeps its plain heading.
   const billboardSlot = h('<div class="billboard-slot"></div>')
   const heading = h('<div><h1>Home</h1><p class="muted" style="margin-top:0">Everything your add-ons are offering right now.</p></div>')
   root.append(billboardSlot, heading)
+  const hero = billboard(billboardSlot, heading)
+  // What you watched and saved, asked once: For you and the billboard both use it.
+  const tasting = loadTaste()
 
   // What is already on this machine comes first, and never waits on the
   // add-ons: a slow or broken catalogue used to take the whole page down with
@@ -32,6 +44,7 @@ export default async function board ({ container }) {
   } catch (err) {
     loading.remove()
     root.append(errorBox(err.message))
+    hero.settle()
     return
   }
   loading.remove()
@@ -43,13 +56,24 @@ export default async function board ({ container }) {
       action: 'Open add-ons',
       href: '#/addons'
     }))
+    hero.settle()
     return
   }
 
-  // Only fetch the catalogues that do not require a search term, and cap the
+  const taste = await tasting
+  // The billboard is for finding something: nothing already watched or saved.
+  hero.skip(taste.known)
+  const answers = []
+
+  // What is like the titles you watch comes before what the add-ons offer.
+  const picks = h('<div></div>')
+  root.append(picks)
+  answers.push(renderForYou(picks, catalogs.filter(browsable), taste, hero))
+
+  // Only fetch the catalogues that can be paged as they are, and cap the
   // number of parallel requests so a slow add-on cannot stall the page.
-  const usable = catalogs.filter(catalog => !catalog.requiresSearch).slice(0, 12)
-  for (const catalog of usable) {
+  const usable = catalogs.filter(browsable).slice(0, 12)
+  usable.forEach((catalog, index) => {
     const node = shelf({
       title: catalog.name,
       source: catalog.addonName,
@@ -59,18 +83,27 @@ export default async function board ({ container }) {
     node.strip.replaceWith(placeholderStrip)
     root.append(node)
 
-    api.catalog({ addon: catalog.addonId, type: catalog.type, id: catalog.id })
+    answers.push(api.catalog({ addon: catalog.addonId, type: catalog.type, id: catalog.id })
       .then(metas => {
         metas = metas.filter(wellRated)
         if (!metas.length) return node.remove()
-        if (!billboardSlot.childElementCount) fillBillboard(billboardSlot, heading, metas, catalog)
+        hero.offer(`${catalog.addonId}:${catalog.type}:${catalog.id}`, {
+          label: `${catalog.name} · ${TYPE_LABELS[catalog.type] || catalog.type}`,
+          order: index,
+          items: metas.map(meta => ({ meta: { type: catalog.type, ...meta } }))
+        })
         const strip = h('<div class="strip"></div>')
         metas.slice(0, 24).forEach(meta => strip.append(metaCard(meta)))
         strip.append(seeAllCard(node.moreHref))
         placeholderStrip.replaceWith(strip)
       })
-      .catch(() => node.remove())
-  }
+      .catch(() => node.remove()))
+  })
+
+  // The billboard shows once everything has answered, or after a moment,
+  // whichever comes first; a slower answer is fitted in after what is on screen.
+  Promise.allSettled(answers).then(() => hero.settle())
+  setTimeout(() => hero.settle(), SETTLE_MS)
 }
 
 // Part-way through, one tile per show; then, as Netflix and Stremio do, the
@@ -123,6 +156,32 @@ async function renderContinueWatching (root) {
   })
 }
 
+// "Series for you", "Films for you": one row per kind you watch, most-watched
+// first. A profile with nothing watched or saved has none.
+const FOR_YOU_ROWS = { movie: 'Films for you', series: 'Series for you' }
+
+// The best of them are offered to the billboard too, ahead of the catalogues.
+function renderForYou (slot, catalogs, taste, hero) {
+  const types = tasteTypes(taste.seeds).filter(type => FOR_YOU_ROWS[type] && catalogs.some(catalog => catalog.type === type))
+  return Promise.all(types.map(async (type, index) => {
+    const node = shelf({ title: FOR_YOU_ROWS[type], moreHref: forYouHref(type) })
+    const placeholder = skeletonStrip(6)
+    node.strip.replaceWith(placeholder)
+    slot.append(node)
+    try {
+      const shown = (await forYou(type, { taste, catalogs })).picks.filter(pick => wellRated(pick.meta))
+      if (!shown.length) return node.remove()
+      hero.offer(`foryou:${type}`, { label: FOR_YOU_ROWS[type], order: index - types.length, items: shown.slice(0, 10) })
+      const strip = h('<div class="strip"></div>')
+      shown.slice(0, 24).forEach(pick => strip.append(pickCard(pick)))
+      strip.append(seeAllCard(node.moreHref))
+      placeholder.replaceWith(strip)
+    } catch {
+      node.remove()
+    }
+  }))
+}
+
 async function renderActiveDownloads (root) {
   let data
   try {
@@ -149,40 +208,4 @@ async function renderActiveDownloads (root) {
   })
   node.strip.append(seeAllCard(node.moreHref))
   root.append(node)
-}
-
-async function fillBillboard (slot, heading, metas, catalog) {
-  // Not something already under way or finished: the billboard is for finding
-  // something, and Continue watching is right below it.
-  const seen = new Set()
-  try {
-    for (const entry of Object.values(await api.progress())) seen.add(entry.meta?.imdbId || entry.id)
-  } catch { /* feature anything */ }
-  const fresh = metas.filter(meta => (meta.poster || meta.background) && !seen.has(meta.id))
-  const candidates = (fresh.length ? fresh : metas.filter(meta => meta.poster || meta.background)).slice(0, 10)
-  if (!candidates.length) return
-  const day = Math.floor(Date.now() / 864e5)
-  let meta = { type: catalog.type, ...candidates[day % candidates.length] }
-  // Catalogue entries are often brief; the title's own record has the rest.
-  if (!meta.description || !meta.background) {
-    try { meta = { ...meta, ...(await api.meta(meta.type, meta.id)) } } catch { /* the brief one will do */ }
-  }
-  if (slot.childElementCount) return
-  const href = detailHref(meta)
-  const art = meta.background || meta.poster
-  const node = h(`
-    <section class="billboard" style="background-image:url('${esc(art)}')">
-      <div class="info">
-        <span class="eyebrow">${esc(catalog.name)}</span>
-        <h1>${esc(meta.name)}</h1>
-        <div class="facts">${[meta.imdbRating ? `<span class="rating">★ ${esc(meta.imdbRating)}</span>` : '', ...[meta.releaseInfo || meta.year, meta.runtime, meta.genres?.slice(0, 3).join(', ')].filter(Boolean).map(fact => `<span>${esc(fact)}</span>`)].filter(Boolean).join('<span>·</span>')}</div>
-        ${meta.description ? `<p class="desc">${esc(meta.description)}</p>` : ''}
-        <div class="cta">
-          <a class="btn primary" href="${esc(href)}?play=1">▶ Play</a>
-          <a class="btn" href="${esc(href)}">ⓘ More info</a>
-        </div>
-      </div>
-    </section>`)
-  slot.append(node)
-  heading.hidden = true
 }

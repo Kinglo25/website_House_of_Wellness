@@ -285,6 +285,8 @@ router.post('/account/signup', wrap(async (req, res) => {
 
 router.post('/account/logout', wrap(async (req, res) => res.json(await account.signOut())))
 
+router.post('/account/delete', wrap(async (req, res) => res.json(await account.deleteAccount(req.body?.password))))
+
 router.post('/account/sync', wrap(async (req, res) => res.json(await account.sync())))
 
 /* ---------------------------------------------------------------- torrents */

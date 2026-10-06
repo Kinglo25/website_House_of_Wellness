@@ -338,6 +338,49 @@ file that fails in a browser tab often plays fine cast or opened on the TV itsel
 particular file still refuses, it is the TV's decoder, not the download: the file on disk
 is fine and plays anywhere else.
 
+## Finding something to watch
+
+Home and Discover only suggest films and series rated **above 6.5 on IMDb**; anything
+unrated is left out too. Search still finds every title.
+
+**Home** opens on a billboard of up to eight titles to choose from: your *For you*
+picks first, then the best of each catalogue, films and series by turns, no genre twice
+while there are others. Each says where it came from — *Series for you · Like The
+Mighty Nein*, *New · Films* — and the others wait as thumbnails beside it (dots on a
+phone). It moves on every nine seconds, holds still while the pointer or the remote is
+on it, and stays put once you pick one. Nothing already watched or saved is featured,
+and the set changes daily.
+
+**Discover** browses one catalogue at a time, by genre, and narrows it further:
+
+- **Rating**: above 6.5, or 7+, 7.5+ or 8+.
+- **Released**: a decade, or before 1990.
+- **Hide watched**: leaves out anything you have watched or started.
+
+The rating and *Hide watched* are remembered; the rest is in the address, so Back returns
+to the same list. Catalogues that only work with something from elsewhere, such as
+Cinemeta's *Last videos*, are not offered.
+
+**For you** comes first for films and for series: titles like the ones you watched and
+saved. Each tile says which of yours it is most like, and the list can be narrowed by
+genre, rating and decade, or ordered by rating or release. Home shows the same as a
+*Series for you* or *Films for you* row for each kind you watch. Every profile gets its own.
+
+No recommendation service is involved, and nothing is sent anywhere. A title's record
+already names its genres, main cast, director, writers, country and year, so StreamHouse
+looks up the titles you spent time on and compares everything the catalogues offer with
+them ([`taste.js`](public/js/taste.js)):
+
+- A title counts for more the more of it you watched, and the more lately. A show grows
+  with its episodes, and a saved title counts as interest.
+- Likeness is mostly the same mix of genres, then the same people, country and era.
+  Animation, documentary, horror and family are treated as a different kind of title
+  altogether, so an anime fan is not sent live action.
+- A better rating lifts a match, and each further pick like the same title counts for a
+  little less, so all your tastes get a turn.
+
+With nothing watched or saved yet, For you says so, and Discover opens on the catalogues.
+
 ## Playing
 
 The player streams over HTTP byte ranges from the local engine, so seeking works while
@@ -467,6 +510,9 @@ streamhouse/
         ├── api.js      typed wrapper over the REST API
         ├── tv.js        ten-foot mode: D-pad navigation, remote keys
         ├── cast.js      device picker and the on-screen remote
+        ├── taste.js    For you: seeds, likeness, ranking (pure, tested)
+        ├── foryou.js   fetches what taste.js needs, and remembers the answer
+        ├── billboard.js  Home's billboard: a few titles to choose from
         ├── components.js, util.js
         └── views/      board, discover, search, detail, library,
                         downloads, addons, settings, player
@@ -475,8 +521,8 @@ streamhouse/
 No build step and no frontend framework — the browser loads the ES modules directly, so
 editing a file and reloading is the whole dev loop. `npm run dev` restarts the server on
 change, and `npm test` checks the parser and the ranker against real-world release
-names, plus the VLC hand-off and the rules account sync merges by (no server and no
-network needed).
+names, plus the VLC hand-off, the rules account sync merges by, and what For you
+suggests (no server and no network needed).
 
 ## API
 

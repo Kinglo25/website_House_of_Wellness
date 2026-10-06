@@ -2,8 +2,11 @@ package com.streamhouse.tv
 
 import android.annotation.SuppressLint
 import android.app.UiModeManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -12,6 +15,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.streamhouse.tv.databinding.ActivityMainBinding
@@ -50,11 +54,28 @@ class MainActivity : AppCompatActivity() {
         }
         binding.webView.setBackgroundColor(0xFF0B0B17.toInt())
         binding.webView.addJavascriptInterface(WebBridge(this), WebBridge.NAME)
+        // An app, not a web page: no scroll bars, no glow at the ends of a
+        // page, no grey wash over the whole screen when it has the focus.
+        binding.webView.overScrollMode = View.OVER_SCROLL_NEVER
+        binding.webView.isVerticalScrollBarEnabled = false
+        binding.webView.isHorizontalScrollBarEnabled = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) binding.webView.defaultFocusHighlightEnabled = false
 
         binding.webView.webChromeClient = WebChromeClient()
         binding.webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 binding.progress.visibility = View.GONE
+            }
+
+            // StreamHouse's own pages load here. Anything else — a trailer, a
+            // web page — goes to the app made for it (YouTube for a trailer),
+            // rather than turning this into a web browser.
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url ?: return false
+                val home = serverUrl?.let { Uri.parse(it) } ?: return false
+                if (url.host == home.host && url.port == home.port) return false
+                openElsewhere(url)
+                return true
             }
 
             override fun onReceivedError(
@@ -74,6 +95,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        Updater.checkQuietly(this)
         val chosen = Prefs.server(this)
         if (chosen == opened) return
         opened = chosen
@@ -164,15 +186,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun openElsewhere(url: Uri) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, url))
+        } catch (error: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.cannot_open_link, Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_BACK -> {
                 if (binding.error.visibility == View.VISIBLE) return super.onKeyDown(keyCode, event)
-                if (binding.webView.canGoBack()) {
-                    binding.webView.goBack()
-                    return true
+                // Held down, Back repeats: one press is one step.
+                if ((event?.repeatCount ?: 0) > 0) return true
+                // The page first: an open dialog or list closes, as Back does
+                // in any TV app, before the page itself is left.
+                binding.webView.evaluateJavascript("window.StreamHouseBack ? window.StreamHouseBack() : false") { handled ->
+                    if (handled == "true" || isFinishing) return@evaluateJavascript
+                    if (binding.webView.canGoBack()) binding.webView.goBack() else confirmExit()
                 }
-                confirmExit()
                 return true
             }
             // Menu / settings on the remote opens the choice of where StreamHouse runs.

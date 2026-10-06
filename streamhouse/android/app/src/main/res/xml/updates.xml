@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Where Updater downloads a newer build before handing it to the installer. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>

@@ -49,7 +49,7 @@ export function whoIsWatching (list, { cancellable = false } = {}) {
   return new Promise(resolve => {
     document.querySelector('.who')?.remove()
     const screen = h(`
-      <div class="who" role="dialog" aria-label="Who's watching?">
+      <div class="who" role="dialog" aria-label="Who's watching?" data-cancellable="${cancellable}">
         <h1>Who’s watching?</h1>
         <div class="who-list">
           ${list.map(viewer => `
