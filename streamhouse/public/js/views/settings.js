@@ -334,7 +334,7 @@ export default async function settings ({ container, query = {} }) {
   }
 
   const castPanel = h(`
-    <div class="setting">
+    <div class="setting" data-slot="cast">
       <div class="label">
         <b>Cast to a TV</b>
         <span class="tiny muted">Send video to a DLNA device on your network and use this page as

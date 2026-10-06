@@ -1189,8 +1189,11 @@ html.tv .stream.best { border-color: rgba(58, 196, 125, 0.45); background: rgba(
 html.tv .stream.episode.active { border-color: rgba(123, 91, 245, 0.6); background: rgba(123, 91, 245, 0.1); }
 html.tv .stream.rejected:focus-within { opacity: 1; }
 html.tv .stream.episode .ep-progress { height: 6px; max-width: 420px; margin-top: 10px; }
-/* Casting from a TV to a TV is not something anyone does from the sofa. */
-html.tv [data-slot="cast"] { display: none; }
+/* Casting from a TV to a TV is not something anyone does from the sofa. Nor
+   is copying a link for VLC: a TV has no clipboard and no VLC on the desk. */
+html.tv [data-slot="cast"],
+html.tv .player-top [data-act="cast"],
+html.tv .player-top [data-act="external"] { display: none; }
 
 html.tv .toolbar { gap: 16px; padding: 20px 0 28px; }
 /* A TV has no files to pick a .torrent from. */

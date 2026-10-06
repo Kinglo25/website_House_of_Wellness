@@ -1,10 +1,8 @@
 package com.streamhouse.tv
 
+import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
-import android.text.format.Formatter
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
@@ -14,6 +12,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
@@ -25,10 +24,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import com.streamhouse.tv.databinding.ActivityPlayerBinding
-import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * Native playback with ExoPlayer.
@@ -42,6 +37,9 @@ import java.net.URL
  * takes a while when few people share it. ExoPlayer on its own gives up after
  * about half a minute of that; this keeps waiting while anything might still
  * come, and says what the torrent is doing meanwhile.
+ *
+ * A file ExoPlayer cannot read, or whose sound or picture this device cannot
+ * decode, goes to [VlcPlayerActivity] instead, from the same point.
  */
 class PlayerActivity : AppCompatActivity() {
 
@@ -54,15 +52,12 @@ class PlayerActivity : AppCompatActivity() {
 
         /** How long the film may go without a single byte arriving before it gives up. */
         private const val PATIENCE_MS = 3 * 60_000L
-        private const val STATUS_EVERY_MS = 2000L
-        private val INFO_HASH = Regex("/api/stream/([0-9a-fA-F]{40})")
     }
 
     private lateinit var binding: ActivityPlayerBinding
     private var player: ExoPlayer? = null
-    private val main = Handler(Looper.getMainLooper())
-    private var infoHash: String? = null
-    private var polling = false
+    private var status: TorrentStatus? = null
+    private var handedOver = false
 
     /** When the last byte of the film arrived, written by ExoPlayer's loading thread. */
     @Volatile
@@ -89,7 +84,7 @@ class PlayerActivity : AppCompatActivity() {
             finish()
             return
         }
-        infoHash = INFO_HASH.find(url)?.groupValues?.get(1)?.lowercase()
+        status = TorrentStatus(this, intent.getStringExtra(EXTRA_SERVER), url) { binding.status.text = it }
 
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         binding.title.text = title
@@ -117,13 +112,21 @@ class PlayerActivity : AppCompatActivity() {
 
         exoPlayer.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                showFailure(error)
+                if (vlcMightPlay(error)) handOverToVlc() else showFailure(error)
+            }
+
+            // A film whose sound (DTS, TrueHD) or picture this device cannot
+            // decode would otherwise play silent, or as sound over a black screen.
+            override fun onTracksChanged(tracks: Tracks) {
+                val silent = tracks.containsType(C.TRACK_TYPE_AUDIO) && !tracks.isTypeSupported(C.TRACK_TYPE_AUDIO)
+                val blind = tracks.containsType(C.TRACK_TYPE_VIDEO) && !tracks.isTypeSupported(C.TRACK_TYPE_VIDEO)
+                if (silent || blind) handOverToVlc()
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 val waiting = playbackState == Player.STATE_BUFFERING
                 binding.waiting.visibility = if (waiting) View.VISIBLE else View.GONE
-                if (waiting) startStatus()
+                if (waiting) status?.start() else status?.stop()
                 if (playbackState == Player.STATE_ENDED) finish()
             }
         })
@@ -138,17 +141,33 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        main.removeCallbacks(pollStatus)
-        reportProgress()
+        status?.stop()
+        player?.let { WatchPosition.report(intent.getStringExtra(EXTRA_SERVER), intent.getStringExtra(EXTRA_PROGRESS_KEY), it.currentPosition, it.duration) }
         player?.release()
         player = null
         super.onDestroy()
     }
 
+    // Errors reading the file (3xxx), decoding it (4xxx) or sounding it (5xxx):
+    // VLC reads and decodes far more than ExoPlayer, in software if need be.
+    private fun vlcMightPlay(error: PlaybackException) = error.errorCode in 3000..5999
+
+    /** VLC carries on from here; the position is written back from there. */
+    private fun handOverToVlc() {
+        if (handedOver) return
+        handedOver = true
+        val reached = player?.currentPosition ?: 0L
+        val from = if (reached > 0) reached else intent.getLongExtra(EXTRA_START_MS, 0L)
+        startActivity(Intent(this, VlcPlayerActivity::class.java).putExtras(intent).putExtra(EXTRA_START_MS, from))
+        // VLC reports the position from now on.
+        player?.release()
+        player = null
+        finish()
+    }
+
     /** Says why, in words, and how to get out of it: Back. */
     private fun showFailure(error: PlaybackException) {
-        main.removeCallbacks(pollStatus)
-        polling = false
+        status?.stop()
         binding.waiting.visibility = View.GONE
         binding.title.visibility = View.VISIBLE
         val reason = when (error.errorCode) {
@@ -156,109 +175,10 @@ class PlayerActivity : AppCompatActivity() {
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
             PlaybackException.ERROR_CODE_TIMEOUT -> R.string.failed_no_data
             PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> R.string.failed_engine
-            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
-            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED -> R.string.failed_format
-            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-            PlaybackException.ERROR_CODE_DECODING_FAILED,
-            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> R.string.failed_decoding
             else -> R.string.failed_other
         }
         binding.message.text = getString(R.string.playback_failed, getString(reason), error.errorCodeName)
         binding.message.visibility = View.VISIBLE
-    }
-
-    /* ---------------------------------------------- what the torrent is doing */
-
-    private val pollStatus = object : Runnable {
-        override fun run() {
-            val server = intent.getStringExtra(EXTRA_SERVER)
-            val hash = infoHash
-            if (server == null || hash == null || binding.waiting.visibility != View.VISIBLE) {
-                polling = false
-                return
-            }
-            Thread {
-                val text = try {
-                    describe(torrentStatus(server, hash))
-                } catch (error: Exception) {
-                    null
-                }
-                runOnUiThread { if (text != null && !isFinishing) binding.status.text = text }
-            }.start()
-            main.postDelayed(this, STATUS_EVERY_MS)
-        }
-    }
-
-    private fun startStatus() {
-        if (polling) return
-        polling = true
-        main.post(pollStatus)
-    }
-
-    /** This film's torrent as the engine lists it, or null when it is not there. */
-    private fun torrentStatus(server: String, hash: String): JSONObject? {
-        val connection = URL("$server/api/torrents").openConnection() as HttpURLConnection
-        connection.connectTimeout = 3000
-        connection.readTimeout = 3000
-        try {
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            val torrents = JSONObject(body).optJSONArray("torrents") ?: return null
-            for (index in 0 until torrents.length()) {
-                val torrent = torrents.optJSONObject(index) ?: continue
-                if (torrent.optString("id") == hash || torrent.optString("infoHash") == hash) return torrent
-            }
-            return null
-        } finally {
-            connection.disconnect()
-        }
-    }
-
-    private fun describe(torrent: JSONObject?): String? {
-        if (torrent == null) return null
-        if (!torrent.isNull("error")) {
-            val error = torrent.optString("error")
-            if (error.isNotEmpty()) return getString(R.string.status_error, error)
-        }
-        val peers = torrent.optInt("numPeers")
-        if (peers == 0) return getString(R.string.status_no_peers)
-        val speed = Formatter.formatShortFileSize(this, torrent.optDouble("downloadSpeed", 0.0).toLong())
-        val percent = (torrent.optDouble("progress", 0.0) * 100).toInt()
-        return resources.getQuantityString(R.plurals.status_downloading, peers, speed, peers, percent)
-    }
-
-    /** Hand the watch position back so "Continue watching" keeps working. */
-    private fun reportProgress() {
-        val server = intent.getStringExtra(EXTRA_SERVER) ?: return
-        val key = intent.getStringExtra(EXTRA_PROGRESS_KEY) ?: return
-        val current = player ?: return
-        val positionSeconds = current.currentPosition / 1000.0
-        val durationSeconds = if (current.duration > 0) current.duration / 1000.0 else 0.0
-        if (key.isEmpty() || durationSeconds <= 0) return
-
-        val body = JSONObject()
-            .put("id", key)
-            .put("time", positionSeconds)
-            .put("duration", durationSeconds)
-            .toString()
-
-        Thread {
-            try {
-                val connection = (URL("$server/api/progress").openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    connectTimeout = 4000
-                    readTimeout = 4000
-                    setRequestProperty("Content-Type", "application/json")
-                }
-                OutputStreamWriter(connection.outputStream).use { it.write(body) }
-                connection.responseCode
-                connection.disconnect()
-            } catch (ignored: Exception) {
-                // Best effort: losing a resume point is not worth a crash.
-            }
-        }.start()
     }
 }
 

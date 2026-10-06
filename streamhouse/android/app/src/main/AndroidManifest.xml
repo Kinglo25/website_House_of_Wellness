@@ -49,6 +49,15 @@
             android:screenOrientation="landscape"
             android:theme="@style/Theme.StreamHouse.Player" />
 
+        <!-- VLC, for the files the first player cannot play. -->
+        <activity
+            android:name=".VlcPlayerActivity"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.StreamHouse.Player" />
+
         <!-- Lets the installer read a downloaded update from the app's cache. -->
         <provider
             android:name="androidx.core.content.FileProvider"

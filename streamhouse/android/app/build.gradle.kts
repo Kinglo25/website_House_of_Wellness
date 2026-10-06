@@ -91,6 +91,9 @@ android {
     packaging {
         // Extracted to disk, libnode.so loads the same way on every Android version.
         jniLibs.useLegacyPackaging = true
+        // libnode.so and VLC both need the shared C++ runtime, and VLC brings a
+        // copy of its own: one is enough.
+        jniLibs.pickFirsts += "**/libc++_shared.so"
     }
 
     compileOptions {
@@ -209,4 +212,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("androidx.media3:media3-datasource:1.3.1")
     implementation("androidx.media3:media3-ui:1.3.1")
+    // The second player (VlcPlayerActivity). From 3.7.3 it brings Kotlin 2's
+    // standard library, which this project's Kotlin 1.9 cannot read.
+    implementation("org.videolan.android:libvlc-all:3.6.5")
 }

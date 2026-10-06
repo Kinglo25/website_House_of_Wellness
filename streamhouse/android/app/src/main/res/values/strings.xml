@@ -25,10 +25,10 @@
     <string name="playback_failed">%1$s\n\nPress Back to pick another stream.\n(%2$s)</string>
     <string name="failed_no_data">Nothing of this film arrived for three minutes: too few people are sharing this stream right now.</string>
     <string name="failed_engine">StreamHouse could not open this file.</string>
-    <string name="failed_format">This device cannot read this kind of file.</string>
-    <string name="failed_decoding">This device cannot decode this film’s picture or sound. That is usual with 4K, HDR and 10-bit files: a 1080p stream will play.</string>
     <string name="failed_other">This film would not play.</string>
+    <string name="failed_vlc">Neither of StreamHouse’s players can play this file.\n\nPress Back to pick another stream.</string>
     <string name="status_no_peers">Looking for people sharing this film…</string>
+    <string name="status_slow">Taking a while? Press Back and pick a stream with more seeders.</string>
     <string name="status_error">The torrent engine says: %1$s</string>
     <plurals name="status_downloading">
         <item quantity="one">%1$s/s from %2$d peer · %3$d%% of the film here</item>

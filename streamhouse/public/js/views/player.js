@@ -208,6 +208,7 @@ export default async function player ({ params, query, container }) {
 
   let handedOff = false
   let src = ''
+  let browserPlayable = true
   try {
     if (kind === 'torrent') {
       const info = await api.playback(params.id, query.fileIdx || undefined)
@@ -216,11 +217,9 @@ export default async function player ({ params, query, container }) {
       state.id = info.id
       state.fileIdx = info.fileIdx
       src = info.streamUrl
+      browserPlayable = info.browserPlayable
       root.querySelector('#pl-title').textContent = meta.title || info.name
       root.querySelector('#pl-sub').textContent = `${info.name} · ${bytes(info.length)}`
-      if (!info.browserPlayable) {
-        toast('This file may not play in a browser — use “Open elsewhere” for VLC if it stalls')
-      }
     } else {
       src = query.src || ''
       root.querySelector('#pl-sub').textContent = 'Direct stream'
@@ -248,6 +247,9 @@ export default async function player ({ params, query, container }) {
     } else if (await openInVlc()) {
       handedOff = true
     } else {
+      // Only said where this page plays the film itself: the TV app's player
+      // and VLC play these files.
+      if (!browserPlayable) toast('This file may not play in a browser — use “Open elsewhere” for VLC if it stalls')
       video.src = src
     }
   } catch (err) {
