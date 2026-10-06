@@ -92,7 +92,7 @@ android {
         // Extracted to disk, libnode.so loads the same way on every Android version.
         jniLibs.useLegacyPackaging = true
         // libnode.so and VLC both need the shared C++ runtime, and VLC brings a
-        // copy of its own: one is enough.
+        // copy of its own: one is enough, and the NDK's takes its place (below).
         jniLibs.pickFirsts += "**/libc++_shared.so"
     }
 
@@ -203,6 +203,38 @@ val nodeProjectAssets by tasks.registering(NodeProjectAssets::class) {
 androidComponents {
     onVariants { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(nodeProjectAssets, NodeProjectAssets::outputDirectory)
+    }
+}
+
+/* ------------------------------------------------ the C++ runtime that ships */
+
+// libnode.so, native-lib and VLC all load libc++_shared.so, and VLC's AAR brings
+// a copy of its own, which pickFirsts may keep instead of the NDK's. Its 32-bit
+// one is from NDK r21 and lacks what the newer libraries were built against —
+// libnode.so would not load, and StreamHouse would not start. So whichever copy
+// was picked, the NDK's (the newest of them) is the one that ships, for every ABI.
+val cxxRuntimeTriples = mapOf(
+    "arm64-v8a" to "aarch64-linux-android",
+    "armeabi-v7a" to "arm-linux-androideabi",
+    "x86_64" to "x86_64-linux-android",
+    "x86" to "i686-linux-android"
+)
+
+tasks.matching { it.name.matches(Regex("merge\\w*NativeLibs")) }.configureEach {
+    doLast {
+        val prebuilt = File(android.ndkDirectory, "toolchains/llvm/prebuilt").listFiles().orEmpty()
+        val packedCopies = outputs.files.asFileTree.matching { include("**/libc++_shared.so") }.files
+        // libnode.so needs it, so there is always one: none found means this
+        // looked in the wrong place, and the APK would ship whichever was picked.
+        if (packedCopies.isEmpty()) throw GradleException("No libc++_shared.so among the merged native libraries")
+        packedCopies.forEach { packed ->
+            val abi = packed.parentFile.name
+            val triple = cxxRuntimeTriples[abi] ?: throw GradleException("No C++ runtime known for $abi")
+            val ndkCopy = prebuilt.map { File(it, "sysroot/usr/lib/$triple/libc++_shared.so") }.firstOrNull { it.isFile }
+                ?: throw GradleException("The NDK's libc++_shared.so for $abi is missing")
+            ndkCopy.copyTo(packed, overwrite = true)
+            logger.lifecycle("C++ runtime for $abi: ${ndkCopy.path}")
+        }
     }
 }
 

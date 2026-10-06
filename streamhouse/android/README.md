@@ -98,6 +98,8 @@ keeps using the computer it was connected to until you choose **Use this device*
 | `src/main/cpp/native-lib.cpp` | starts Node inside the app and sends its console to logcat |
 | `MainActivity.kt` | WebView shell, remote keys, the starting and error screens |
 | `PlayerActivity.kt` | ExoPlayer playback, writes the resume position back |
+| `VlcPlayerActivity.kt` | VLC, for the files ExoPlayer cannot play; its own remote controls |
+| `TorrentStatus.kt` | what the torrent is doing while a player waits; the resume position |
 | `SetupActivity.kt` | this device, or a computer — found on the network or typed in |
 | `Discovery.kt` | UDP broadcast probe, answered by `server/discovery.js` |
 | `WebBridge.kt` | what the web page may call on the device |
@@ -120,6 +122,13 @@ navigation on a TV, the touch layout on a phone.
 exactly what torrents contain; ExoPlayer plays them, streaming over HTTP byte
 ranges so it works while the file is still downloading. When you leave the player
 it posts your position back, and account sync carries it to your other devices.
+
+While it waits for the torrent, the player says what the torrent is doing (peers,
+speed, how much is here), and it keeps waiting for as long as three minutes
+without a byte, since a thin swarm can be that slow to start. A file ExoPlayer
+cannot read, or whose sound or picture the device cannot decode (an unusual MKV
+or AVI, a DTS or TrueHD soundtrack), goes to **VLC** (libvlc, about 40 MB of the
+APK), which carries on from the same point.
 
 ## What is different from a computer
 
